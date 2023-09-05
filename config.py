@@ -1,14 +1,13 @@
 import torch
 import argparse
 
-if torch.cuda.is_available():
-    device = torch.device('cuda')
-else:
-    device = torch.device('cpu')
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = 'cpu'
 
 
 def get_args():
     parser = argparse.ArgumentParser(description="MTNet's args")
+
     # Operation environment
     parser.add_argument('--seed',
                         type=int,
@@ -18,6 +17,7 @@ def get_args():
                         type=str,
                         default=device,
                         help='Running on which device')
+
     # Data
     parser.add_argument('--task',
                         type=str,
@@ -27,7 +27,16 @@ def get_args():
     parser.add_argument('--dataset',
                         type=str,
                         default='PubmedGraphDataset',
+                        # default='PPIDataset',
+                        # default='RedditDataset',
+                        # default='YelpDataset',
                         help='Dataset name')
+
+    # Experimental Setup
+    parser.add_argument('--num_epochs',
+                        type=int,
+                        default=100,
+                        help='Training epoch')
 
     parser.add_argument('--save_path',
                         type=str,

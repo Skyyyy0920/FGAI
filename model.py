@@ -7,6 +7,7 @@ from dgl.nn.pytorch.utils import Identity
 import torch
 import torch.nn as nn
 import dgl.nn.pytorch as dglnn
+import scipy.sparse as sp
 import torch.nn.functional as F
 from utils import k_shell_algorithm
 
@@ -37,6 +38,12 @@ class GraphAttentionLayer(nn.Module):
 
         zero_vec = -9e15 * torch.ones_like(e)
         attention = torch.where(adj > 0, e, zero_vec)
+
+        # adj_sparse = dgl.from_scipy(sp.csr_matrix(adj.numpy()))
+        # attention_x = adj_sparse.multiply(e)
+        #
+        # print(attention_x == attention)
+
         attention = F.softmax(attention, dim=1)
         attention = F.dropout(attention, self.dropout, training=self.training)
         h_prime = torch.matmul(attention, h)  # [N, N], [N, out_features] --> [N, out_features]
