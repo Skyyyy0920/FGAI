@@ -8,96 +8,36 @@ import torch
 import torch.nn as nn
 import dgl.nn.pytorch as dglnn
 import scipy.sparse as sp
+from scipy.sparse import csr_matrix
 import torch.nn.functional as F
 from utils import k_shell_algorithm
 
 
-class GraphAttentionLayer(nn.Module):
-    def __init__(self, in_features, out_features, dropout, alpha, concat=True):
-        super(GraphAttentionLayer, self).__init__()
-        self.dropout = dropout
-        self.in_features = in_features
-        self.out_features = out_features
-        self.alpha = alpha
-        self.concat = concat
-
-        self.W = nn.Parameter(torch.zeros(size=(in_features, out_features)))
-        nn.init.xavier_uniform_(self.W.data, gain=1.414)
-        self.a = nn.Parameter(torch.zeros(size=(2 * out_features, 1)))
-        nn.init.xavier_uniform_(self.a.data, gain=1.414)
-
-        self.leakyrelu = nn.LeakyReLU(self.alpha)
-
-    def forward(self, input_feature, adj):
-        h = torch.mm(input_feature, self.W)  # [N, out_features]
-        N = h.size(0)
-
-        a_input = torch.cat([h.repeat(1, N).view(N * N, -1), h.repeat(N, 1)], dim=1).view(N, -1, 2 * self.out_features)
-        # shape[N, N, 2*out_features]
-        e = self.leakyrelu(torch.matmul(a_input, self.a).squeeze(2))  # [N, N, 1] -> [N, N]
-
-        zero_vec = -9e15 * torch.ones_like(e)
-        attention = torch.where(adj > 0, e, zero_vec)
-
-        # adj_sparse = dgl.from_scipy(sp.csr_matrix(adj.numpy()))
-        # attention_x = adj_sparse.multiply(e)
-        #
-        # print(attention_x == attention)
-
-        attention = F.softmax(attention, dim=1)
-        attention = F.dropout(attention, self.dropout, training=self.training)
-        h_prime = torch.matmul(attention, h)  # [N, N], [N, out_features] --> [N, out_features]
-
-        if self.concat:
-            return F.elu(h_prime)
-        else:
-            return h_prime
-
-
-class GATGraphClassifier(nn.Module):
-    def __init__(self, in_feats, hidden_dim, n_classes, dropout, alpha, n_heads, readout_type='mean'):
-        super(GATGraphClassifier, self).__init__()
-        self.dropout = dropout
-        self.readout_type = readout_type
-
-        self.attentions = [GraphAttentionLayer(in_feats, hidden_dim, dropout, alpha, True) for _ in range(n_heads)]
-        for i, attention in enumerate(self.attentions):
-            self.add_module('attention_{}'.format(i), attention)
-
-        self.out_att = GraphAttentionLayer(hidden_dim * n_heads, n_classes, dropout, alpha, False)
-
-    def forward(self, x, adj):
-        x = F.dropout(x, self.dropout, training=self.training)
-        x = torch.cat([att(x, adj) for att in self.attentions], dim=1)
-        x = F.dropout(x, self.dropout, training=self.training)  # N * hidden_dim
-        if self.readout_type == 'top-k':
-            k_values = torch.tensor(k_shell_algorithm(adj), dtype=torch.float32)
-            k_values /= k_values.sum()
-            x = F.elu(self.out_att(x, adj))
-            x = torch.matmul(k_values, x).unsqueeze(0)  # 1 * n_classes
-        else:
-            x = F.elu(self.out_att(x, adj))  # 1 * hidden_dim
-            x = torch.mean(x, dim=0).unsqueeze(0)  # 1 * n_classes
-        return x
-
-
-class GATNodeClassifier(nn.Module):
-    def __init__(self, in_feats, hidden_dim, n_classes, dropout, alpha, n_heads):
-        super(GATNodeClassifier, self).__init__()
-        self.dropout = dropout
-
-        self.attentions = [GraphAttentionLayer(in_feats, hidden_dim, dropout, alpha, True) for _ in range(n_heads)]
-        for i, attention in enumerate(self.attentions):
-            self.add_module('attention_{}'.format(i), attention)
-
-        self.out_att = GraphAttentionLayer(hidden_dim * n_heads, n_classes, dropout, alpha, False)
-
-    def forward(self, x, adj):
-        x = F.dropout(x, self.dropout, training=self.training)
-        x = torch.cat([att(x, adj) for att in self.attentions], dim=1)
-        x = F.dropout(x, self.dropout, training=self.training)  # N * hidden_dim
-        x = F.elu(self.out_att(x, adj))
-        return x
+# class GATGraphClassifier(nn.Module):
+#     def __init__(self, in_feats, hidden_dim, n_classes, dropout, alpha, n_heads, readout_type='mean'):
+#         super(GATGraphClassifier, self).__init__()
+#         self.dropout = dropout
+#         self.readout_type = readout_type
+#
+#         self.attentions = [GraphAttentionLayer(in_feats, hidden_dim, dropout, alpha, True) for _ in range(n_heads)]
+#         for i, attention in enumerate(self.attentions):
+#             self.add_module('attention_{}'.format(i), attention)
+#
+#         self.out_att = GraphAttentionLayer(hidden_dim * n_heads, n_classes, dropout, alpha, False)
+#
+#     def forward(self, x, adj):
+#         x = F.dropout(x, self.dropout, training=self.training)
+#         x = torch.cat([att(x, adj) for att in self.attentions], dim=1)
+#         x = F.dropout(x, self.dropout, training=self.training)  # N * hidden_dim
+#         if self.readout_type == 'top-k':
+#             k_values = torch.tensor(k_shell_algorithm(adj), dtype=torch.float32)
+#             k_values /= k_values.sum()
+#             x = F.elu(self.out_att(x, adj))
+#             x = torch.matmul(k_values, x).unsqueeze(0)  # 1 * n_classes
+#         else:
+#             x = F.elu(self.out_att(x, adj))  # 1 * hidden_dim
+#             x = torch.mean(x, dim=0).unsqueeze(0)  # 1 * n_classes
+#         return x
 
 
 class GATConv(nn.Module):
@@ -111,7 +51,8 @@ class GATConv(nn.Module):
             negative_slope=0.2,
             residual=False,
             activation=None,
-            allow_zero_in_degree=False,
+            # allow_zero_in_degree=False,
+            allow_zero_in_degree=True,
             bias=True,
     ):
         super(GATConv, self).__init__()
@@ -227,11 +168,11 @@ class GATConv(nn.Module):
                 rst = self.activation(rst)
 
             def message_func(edges):
-                print(1)
+                # print(1)
                 return {'a': edges.data['a']}
 
             def reduce_func(nodes):
-                print(2)
+                # print(2)
                 return {'attention_list': nodes.mailbox['a'].sum(1)}
 
             graph.update_all(message_func=message_func, reduce_func=reduce_func)
@@ -242,21 +183,22 @@ class GATConv(nn.Module):
                 return rst
 
 
-class GATNodeClassifier_DGL(nn.Module):
-    def __init__(self, in_feats, hidden_feats, num_classes, num_heads):
-        super(GATNodeClassifier_DGL, self).__init__()
+class GATNodeClassifier(nn.Module):
+    def __init__(self, in_feats, hid_dim, num_classes, num_layers, num_heads):
+        super(GATNodeClassifier, self).__init__()
         self.layers = nn.ModuleList()
-        self.layers.append(GATConv(in_feats, hidden_feats, num_heads, feat_drop=0.6, attn_drop=0.6))
-        for _ in range(1, num_heads):
-            self.layers.append(GATConv(hidden_feats * num_heads, hidden_feats, num_heads, feat_drop=0.6, attn_drop=0.6))
-        self.fc = nn.Linear(hidden_feats * num_heads, num_classes)
+        self.layers.append(GATConv(in_feats, hid_dim, num_heads[0], 0.6, 0.6, activation=F.elu))
+        for i in range(1, num_layers):
+            self.layers.append(GATConv(hid_dim * num_heads[i - 1], hid_dim, num_heads[i], 0.6, 0.6, activation=F.elu))
+        self.out_layer = GATConv(hid_dim * num_heads[-2], num_classes, num_heads[-1], 0.6, 0.6, activation=None)
 
     def forward(self, g, features):
         h = features
         for layer in self.layers:
             h, att = layer(g, h, get_attention=True)
-            h = h.flatten(1)
-        logits = self.fc(h)
+            h = h.flatten(1)  # use concat to handle multi-head. for mean method, use h = h.mean(1)
+        logits = self.out_layer(g, h).mean(1)
+
         return logits
 
 

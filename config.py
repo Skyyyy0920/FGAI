@@ -11,7 +11,7 @@ def get_args():
     # Operation environment
     parser.add_argument('--seed',
                         type=int,
-                        default=20020310,
+                        default=20010920,
                         help='Random seed')
     parser.add_argument('--device',
                         type=str,
@@ -26,16 +26,17 @@ def get_args():
                         help='task')
     parser.add_argument('--dataset',
                         type=str,
-                        default='PubmedGraphDataset',
+                        # default='PubmedGraphDataset',
                         # default='PPIDataset',
                         # default='RedditDataset',
                         # default='YelpDataset',
+                        default='CoraGraphDataset',
                         help='Dataset name')
 
     # Experimental Setup
     parser.add_argument('--num_epochs',
                         type=int,
-                        default=100,
+                        default=200,
                         help='Training epoch')
 
     parser.add_argument('--save_path',
