@@ -1,7 +1,8 @@
 import pandas as pd
 from tqdm import tqdm
 from torch.utils.data import Dataset, DataLoader
-from dgl.data import PubmedGraphDataset, PPIDataset, RedditDataset, YelpDataset, CoraGraphDataset  # Node Classification
+from dgl.data import PubmedGraphDataset, PPIDataset, RedditDataset, YelpDataset, CoraGraphDataset, \
+    CiteseerGraphDataset  # Node Classification
 from dgl.data import GINDataset  # Graph Classification PROTEINS, MUTAG, IMDBBINARY, IMDBMULTI
 
 
@@ -18,6 +19,8 @@ def load_dataset(args):
             dataset = YelpDataset()
         elif args.dataset == 'CoraGraphDataset':
             dataset = CoraGraphDataset()
+        elif args.dataset == 'CiteseerGraphDataset':
+            dataset = CiteseerGraphDataset()
         else:
             raise ValueError(f"Unknown dataset name: {args.dataset}")
     elif args.task == 'graph-level':

@@ -2,13 +2,13 @@ import yaml
 import time
 import pickle
 import zipfile
-import logging
 from model import *
 from utils import *
 from config import *
 from dataset import *
+from trainer import *
+from attacker import *
 import torch.optim as optim
-from sklearn.metrics import accuracy_score
 
 if __name__ == '__main__':
     # ==================================================================================================
@@ -55,7 +55,6 @@ if __name__ == '__main__':
     # 4. Prepare data
     # ==================================================================================================
     dataset = load_dataset(args)
-    num_classes = dataset.num_classes
     g = dataset[0].to(device=args.device)
     train_mask = g.ndata['train_mask']
     val_mask = g.ndata['val_mask']
@@ -65,60 +64,34 @@ if __name__ == '__main__':
     test_label = g.ndata['label'][test_mask]
     features = g.ndata["feat"]
     num_feats = features.shape[1]
+    num_classes = dataset.num_classes
+    # src, dst = g.edges()
+    # print(src, dst)
 
     # ==================================================================================================
     # 5. Build models, define overall loss and optimizer
     # ==================================================================================================
-
-    # Initialize the model
-    model = GATNodeClassifier(in_feats=num_feats, hid_dim=8, num_classes=num_classes, num_layers=1,
-                              num_heads=[8, 1]).to(device=args.device)
-
-    # Define loss and optimizer
+    model = GATNodeClassifier(in_feats=num_feats, hid_dim=8, n_classes=num_classes,
+                              n_layers=1, n_heads=[8, 1]).to(device=args.device)
+    PGDer = PGDAttacker(radius=args.pgd_radius, steps=args.pgd_step, step_size=args.pgd_step_size,
+                        random_start=True, norm_type=args.pgd_norm_type, ascending=True)
+    X_PGDer = PGDAttacker(radius=args.x_pgd_radius, steps=args.x_pgd_step, step_size=args.x_pgd_step_size,
+                          random_start=True, norm_type=args.x_pgd_norm_type, ascending=True)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=5e-3, weight_decay=5e-4)
+
+    trainer = Trainer(model, criterion, optimizer, PGDer, X_PGDer, args)
 
     # ==================================================================================================
     # 6. Load pre-trained model
     # ==================================================================================================
 
     # ==================================================================================================
-    # 7. Training
+    # 7. Training and Validation
     # ==================================================================================================
-    for epoch in range(args.num_epochs):
-        model.train()
-
-        # Forward pass
-        # outputs = model(features, g.adjacency_matrix().to_dense())
-        outputs = model(g, features)
-        loss = criterion(outputs[train_mask], train_label)
-
-        # Backpropagation
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
-        # Validation
-        model.eval()
-        with torch.no_grad():
-            # val_outputs = model(features, g.adjacency_matrix().to_dense())
-            val_outputs = model(g, features)
-            val_loss = criterion(val_outputs[val_mask], val_label)
-            val_preds = torch.argmax(val_outputs[val_mask], dim=1)
-            val_accuracy = accuracy_score(val_label.cpu(), val_preds.cpu())
-
-        logging.info(
-            f'Epoch [{epoch + 1}/{args.num_epochs}] | Train Loss: {loss.item():.4f} | Val Loss: {val_loss.item():.4f} | Val Accuracy: {val_accuracy:.4f}')
+    trainer.train(g, features, train_mask, train_label, val_mask, val_label)
 
     # ==================================================================================================
-    # 8. Validation and Testing
+    # 8. Testing
     # ==================================================================================================
-    model.eval()
-    with torch.no_grad():
-        # test_outputs = model(features, g.adjacency_matrix().to_dense())
-        test_outputs = model(g, features)
-        test_loss = criterion(test_outputs[test_mask], test_label)
-        test_preds = torch.argmax(test_outputs[test_mask], dim=1)
-        test_accuracy = accuracy_score(test_label.cpu(), test_preds.cpu())
-
-    logging.info(f'Test Loss: {test_loss.item():.4f} | Test Accuracy: {test_accuracy:.4f}')
+    trainer.evaluate(g, features, test_mask, test_label)

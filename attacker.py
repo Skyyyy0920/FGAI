@@ -1,7 +1,7 @@
 import torch
 
 
-class PGDAttacker():
+class PGDAttacker:
     def __init__(self, radius, steps, step_size, random_start, norm_type, ascending=True, device='cpu'):
         self.radius = radius  # attack radius
         self.steps = steps  # how many step to conduct pgd
@@ -24,10 +24,7 @@ class PGDAttacker():
                 adv_x += 2 * (torch.rand_like(x) - 0.5) * self.radius / self.steps
             self._clip_(adv_x, x)
 
-        # assert adv_x.shape[0] == 8
-
         ''' temporarily shutdown autograd of model to improve pgd efficiency '''
-        # model.eval()
         decoder.eval()
         for pp in decoder.parameters():
             pp.requires_grad = False
