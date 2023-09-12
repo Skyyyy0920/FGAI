@@ -161,10 +161,11 @@ class GATNodeClassifier(nn.Module):
             h, att = layer(g, h, get_attention=True)
             h = h.flatten(1)  # use concat to handle multi-head. for mean method, use h = h.mean(1)
         graph_representation = h.mean(dim=0)
+        attention = att
         h, att = self.out_layer(g, h, get_attention=True)
         logits = h.mean(dim=1)
 
-        return logits, graph_representation
+        return logits, graph_representation, attention
 
 
 class GATGraphClassifier(nn.Module):
@@ -210,3 +211,17 @@ class GraphClassifierExample(nn.Module):
             hg = dgl.mean_nodes(g, 'h')  # N * hid_dim
             out = self.classify(hg)  # num_graph * n_classes
             return out
+
+
+class MultiTaskLoss(nn.Module):
+    def __init__(self, num=4):
+        super(MultiTaskLoss, self).__init__()
+        params = torch.ones(num, requires_grad=True)
+        self.params = nn.Parameter(params)
+
+    def forward(self, *losses):
+        loss_sum = 0
+        for i, loss in enumerate(losses):
+            # loss_sum += 0.5 / (self.params[i] ** 2) * loss + torch.log(1 + self.params[i] ** 2)
+            loss_sum += 0.5 * torch.exp(-self.params[i]) * loss + self.params[i]
+        return loss_sum

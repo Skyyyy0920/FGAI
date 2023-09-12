@@ -55,3 +55,59 @@ def k_shell_algorithm(adj_matrix):
             k += 1
 
     return k_values
+
+
+def tvd(predictions, targets):  # accepts two numpy arrays of dimension: (num. instances, )
+    return (0.5 * np.abs(predictions - targets)).sum()
+
+
+def batch_tvd(predictions, targets, reduce=True):  # accepts two Torch tensors... " "
+    if not reduce:
+        return 0.5 * torch.abs(predictions - targets)
+    else:
+        return (0.5 * torch.abs(predictions - targets)).sum()
+
+
+def topk_overlap_loss(new_att, old_att, K=2, metric='l1'):
+    idx_1 = torch.argsort(new_att, dim=1, descending=True)
+    idx_1 = idx_1[:, :K]
+    old_TopK_1 = old_att.gather(1, idx_1)
+    new_topk_1 = new_att.gather(1, idx_1)
+
+    idx_2 = torch.argsort(old_att, dim=1, descending=True)
+    idx_2 = idx_2[:, :K]
+    new_top_k_2 = new_att.gather(1, idx_2)
+    old_TopK_2 = old_att.gather(1, idx_2)
+
+    gt_Topk_1_normed = torch.nn.functional.softmax(new_topk_1, dim=-1)
+    pred_TopK_1_normed = torch.nn.functional.softmax(old_TopK_1, dim=-1)
+    gt_TopK_2_normed = torch.nn.functional.softmax(new_top_k_2, dim=-1)
+    pred_TopK_2_normed = torch.nn.functional.softmax(old_TopK_2, dim=-1)
+
+    def kl(a, b):
+        return torch.nn.functional.kl_div(a.log(), b, reduction="batchmean")
+
+    def jsd(a, b):
+        loss = kl(a, b) + kl(b, a)
+        loss /= 2
+        return loss
+
+    if metric == 'l1':
+        loss = torch.abs((old_TopK_1 - new_topk_1)) + torch.abs(new_top_k_2 - old_TopK_2)
+        loss = loss / (2 * K)
+    elif metric == "l2":
+        loss = torch.norm(old_TopK_1 - new_topk_1, p=2) + torch.norm(new_top_k_2 - old_TopK_2, p=2)
+        loss = loss / (2 * K)
+    elif metric == "kl-full":
+        loss = kl(new_att, old_att)
+    elif metric == "jsd-full":
+        loss = jsd(new_att, old_att)
+    elif metric == "kl-topk":
+        loss = kl(gt_Topk_1_normed, pred_TopK_1_normed) + kl(gt_TopK_2_normed, pred_TopK_2_normed)
+        loss /= 2
+    elif metric == "jsd-topk":
+        loss = jsd(gt_Topk_1_normed, pred_TopK_1_normed) + jsd(gt_TopK_2_normed, pred_TopK_2_normed)
+        loss /= 2
+    else:
+        raise ValueError(f"Unknown metric: {metric}")
+    return loss

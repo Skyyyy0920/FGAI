@@ -3,7 +3,6 @@ import time
 import pickle
 import zipfile
 from model import *
-from utils import *
 from config import *
 from dataset import *
 from trainer import *

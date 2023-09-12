@@ -1,4 +1,6 @@
 import torch
+import torch.nn.functional as F
+import numpy as np
 
 
 class PGDAttacker:
@@ -10,57 +12,6 @@ class PGDAttacker:
         self.norm_type = norm_type  # which norm of your noise
         self.ascending = ascending  # perform gradient ascending, i.e, to maximum the loss
         self.device = device
-
-    def perturb_return_loss(self, criterion, x, data, decoder, y, target_model, encoder=None):
-        if self.steps == 0 or self.radius == 0:
-            return x.clone()
-
-        adv_x = x.clone()
-
-        if self.random_start:
-            if self.norm_type == 'l-infty':
-                adv_x += 2 * (torch.rand_like(x) - 0.5) * self.radius
-            else:
-                adv_x += 2 * (torch.rand_like(x) - 0.5) * self.radius / self.steps
-            self._clip_(adv_x, x)
-
-        ''' temporarily shutdown autograd of model to improve pgd efficiency '''
-        decoder.eval()
-        for pp in decoder.parameters():
-            pp.requires_grad = False
-
-        for step in range(self.steps):
-            adv_x.requires_grad_()
-            _y = target_model(adv_x, data, decoder, encoder)
-            loss = criterion(y.to(self.device), _y)
-            grad = torch.autograd.grad(loss, [adv_x])[0]
-
-            with torch.no_grad():
-                if not self.ascending: grad.mul_(-1)
-
-                if self.norm_type == 'l-infty':
-                    adv_x.add_(torch.sign(grad), alpha=self.step_size)
-                else:
-                    if self.norm_type == 'l2':
-                        grad_norm = (grad.reshape(grad.shape[0], -1) ** 2).sum(dim=1).sqrt()
-                    elif self.norm_type == 'l1':
-                        grad_norm = grad.reshape(grad.shape[0], -1).abs().sum(dim=1)
-                    grad_norm = grad_norm.reshape(-1, *([1] * (len(x.shape) - 1)))
-                    scaled_grad = grad / (grad_norm + 1e-10)
-                    adv_x.add_(scaled_grad, alpha=self.step_size)
-
-                self._clip_(adv_x, x)
-
-        ''' reopen autograd of model after pgd '''
-        # decoder.trian()
-        for pp in decoder.parameters():
-            pp.requires_grad = True
-
-        with torch.no_grad():
-            _y = target_model(adv_x, data, decoder, encoder)
-            loss = criterion(y.to(self.device), _y)
-
-        return loss.item()
 
     def _clip_(self, adv_x, x):
         adv_x -= x
@@ -75,41 +26,40 @@ class PGDAttacker:
             adv_x /= (norm + 1e-10)
             adv_x *= norm.clamp(max=self.radius)
         adv_x += x
-        adv_x.clamp_(0, 1)  # 原地地限制范围，将超过指定范围的值裁剪到范围内
+        # adv_x.clamp_(0, 1)  # 原地限制范围，将超过指定范围的值裁剪到范围内
 
-    def perturb(self, criterion, x, data, decoder, y, target_model, encoder=None):
-        if self.steps == 0 or self.radius == 0:
-            return x.clone()
+    def perturb(self, criterion, x, mask, y, graph, target_model):
+        adversarial_x = x.clone()
 
-        adv_x = x.clone()
+        # 随机生成一个(2708, 1433)形状的二进制矩阵，每个元素都是 0 或 1
+        ratio = 0.05
+        binary_matrix = np.random.choice([0, 1], size=x.shape, p=[1 - ratio / 100, ratio / 100])
+        mask_ = binary_matrix.astype(bool)
 
-        if self.random_start:
-            if self.norm_type == 'l-infty':
-                adv_x += 2 * (torch.rand_like(x) - 0.5) * self.radius  # TODO: 加入噪音
-            else:
-                adv_x += 2 * (torch.rand_like(x) - 0.5) * self.radius / self.steps
-            self._clip_(adv_x, x)
+        if self.norm_type == 'l-infty':
+            adversarial_x += 2 * (torch.rand_like(x) - 0.5) * self.radius * mask_  # [-radius, radius]
+        else:
+            adversarial_x += 2 * (torch.rand_like(x) - 0.5) * self.radius / self.steps * mask_
+        self._clip_(adversarial_x, x)
 
-        ''' temporarily shutdown autograd of model to improve pgd efficiency '''
-        # model.eval()
-        decoder.eval()
-        for pp in decoder.parameters():
+        # temporarily shutdown autograd of model to improve PGD efficiency
+        for pp in target_model.parameters():
             pp.requires_grad = False
 
         for step in range(self.steps):
-            adv_x.requires_grad_()
-            # print("adv_x:", adv_x.shape)
-            # assert adv_x.shape[0] == 8
-            _y = target_model(adv_x, data, decoder, encoder)
-            loss = criterion(y.to(self.device), _y)
-            grad = torch.autograd.grad(loss, [adv_x])[0]
+            adversarial_x.requires_grad_()
+            y_pred, _, _ = target_model(graph, adversarial_x)
+            y_ = F.softmax(y_pred[mask], dim=1)
+            y_onehot = F.one_hot(y, num_classes=y_.size(1)).float()
+            loss = criterion(y_, y_onehot)
+            grad = torch.autograd.grad(loss, [adversarial_x])[0]
 
             with torch.no_grad():
                 if not self.ascending:
                     grad.mul_(-1)
 
                 if self.norm_type == 'l-infty':
-                    adv_x.add_(torch.sign(grad), alpha=self.step_size)
+                    adversarial_x.add_(torch.sign(grad), alpha=self.step_size)
                 else:
                     if self.norm_type == 'l2':
                         grad_norm = (grad.reshape(grad.shape[0], -1) ** 2).sum(dim=1).sqrt()
@@ -117,99 +67,12 @@ class PGDAttacker:
                         grad_norm = grad.reshape(grad.shape[0], -1).abs().sum(dim=1)
                     grad_norm = grad_norm.reshape(-1, *([1] * (len(x.shape) - 1)))
                     scaled_grad = grad / (grad_norm + 1e-10)
-                    adv_x.add_(scaled_grad, alpha=self.step_size)  # 原地加
+                    adversarial_x.add_(scaled_grad, alpha=self.step_size)  # 原地加
 
-                self._clip_(adv_x, x)
+                self._clip_(adversarial_x, x)
 
-        ''' reopen autograd of model after pgd '''
-        # decoder.trian()
-        for pp in decoder.parameters():
+        # reopen autograd of model after PGD
+        for pp in target_model.parameters():
             pp.requires_grad = True
 
-        return adv_x.data
-
-    def perturb_random(self, criterion, x, data, decoder, y, target_model, encoder=None):
-        if self.steps == 0 or self.radius == 0:
-            return x.clone()
-        adv_x = x.clone()
-        if self.norm_type == 'l-infty':
-            adv_x += 2 * (torch.rand_like(x) - 0.5) * self.radius
-        else:
-            adv_x += 2 * (torch.rand_like(x) - 0.5) * self.radius / self.steps
-        self._clip_(adv_x, x)
-        return adv_x.data
-
-    def perturb_iat(self, criterion, x, data, decoder, y, target_model, encoder=None):
-        if self.steps == 0 or self.radius == 0:
-            return x.clone()
-
-        B = x.shape[0]
-        L = x.shape[1]
-        H = x.shape[2]
-        nb_num = 8
-
-        alpha = torch.rand(B, L, nb_num, 1).to(self.device)
-        import numpy as np
-        A_1 = x.unsqueeze(2).expand(B, L, nb_num, H)
-        A_2 = x.unsqueeze(1).expand(B, L, L, H)
-        rand_idx = []
-        for i in range(L):
-            rand_idx.append(np.random.choice(L, nb_num, replace=False))
-        rand_idx = np.array(rand_idx)
-        rand_idx = torch.tensor(rand_idx).long().reshape(1, L, 1, nb_num).expand(B, L, H, nb_num).to(self.device)
-        # A_2 = A_2[:,np.arange(0,L), rand_idx,:]
-        A_2 = torch.gather(A_2.reshape(B, L, H, L), -1, rand_idx).reshape(B, L, nb_num, H)
-        A_e = A_1 - A_2
-        # A_e
-        # adv_x = (A_e * alpha).sum(dim=-1) + x.clone()
-
-        adv_x = x.clone()
-
-        if self.random_start:
-            if self.norm_type == 'l-infty':
-                adv_x += 2 * (torch.rand_like(x) - 0.5) * self.radius
-            else:
-                adv_x += 2 * (torch.rand_like(x) - 0.5) * self.radius / self.steps
-        self._clip_(adv_x, x)
-
-        # assert adv_x.shape[0] == 8
-
-        ''' temporarily shutdown autograd of model to improve pgd efficiency '''
-        # model.eval()
-        decoder.eval()
-        for pp in decoder.parameters():
-            pp.requires_grad = False
-
-        adv_x = x.clone()
-
-        alpha.requires_grad_()
-
-        for step in range(self.steps):
-            alpha.requires_grad_()
-            dot_Ae_alpha = (A_e * alpha).sum(dim=-2)
-            # print("dot_Ae_alpha:", dot_Ae_alpha.shape)
-
-            adv_x.add_(torch.sign(dot_Ae_alpha), alpha=self.step_size)
-
-            self._clip_(adv_x, x)
-
-            if encoder is None:
-                adv_x_input = adv_x.squeeze(-1)
-            else:
-                adv_x_input = adv_x
-
-            _y = target_model(adv_x_input, data, decoder, encoder)
-            loss = criterion(y.to(self.device), _y)
-            grad = torch.autograd.grad(loss, [alpha], retain_graph=True)[0]
-            # with torch.no_grad():
-            with torch.no_grad():
-                if not self.ascending: grad.mul_(-1)
-                assert self.norm_type == 'l-infty'
-                alpha = alpha.detach() + grad * 0.01
-
-        ''' reopen autograd of model after pgd '''
-        # decoder.trian()
-        for pp in decoder.parameters():
-            pp.requires_grad = True
-
-        return adv_x.data
+        return adversarial_x
