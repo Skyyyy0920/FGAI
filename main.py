@@ -64,33 +64,36 @@ if __name__ == '__main__':
     features = g.ndata["feat"]
     num_feats = features.shape[1]
     num_classes = dataset.num_classes
-    # src, dst = g.edges()
-    # print(src, dst)
 
     # ==================================================================================================
     # 5. Build models, define overall loss and optimizer
     # ==================================================================================================
-    model = GATNodeClassifier(in_feats=num_feats, hid_dim=8, n_classes=num_classes,
-                              n_layers=1, n_heads=[8, 1]).to(device=args.device)
+    standard_model = GATNodeClassifier(in_feats=num_feats, hid_dim=8, n_classes=num_classes,
+                                       n_layers=1, n_heads=[8, 1]).to(device=args.device)
+    FGAI = GATNodeClassifier(in_feats=num_feats, hid_dim=8, n_classes=num_classes,
+                             n_layers=1, n_heads=[8, 1]).to(device=args.device)
     PGDer = PGDAttacker(radius=args.pgd_radius, steps=args.pgd_step, step_size=args.pgd_step_size,
                         random_start=True, norm_type=args.pgd_norm_type, ascending=True)
-    X_PGDer = PGDAttacker(radius=args.x_pgd_radius, steps=args.x_pgd_step, step_size=args.x_pgd_step_size,
+    PGDer_2 = PGDAttacker(radius=args.x_pgd_radius, steps=args.x_pgd_step, step_size=args.x_pgd_step_size,
                           random_start=True, norm_type=args.x_pgd_norm_type, ascending=True)
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=5e-3, weight_decay=5e-4)
+    optimizer = optim.Adam(standard_model.parameters(), lr=5e-3, weight_decay=5e-4)
 
-    trainer = Trainer(model, criterion, optimizer, PGDer, X_PGDer, args)
+    trainer = Trainer(standard_model, FGAI, criterion, optimizer, PGDer, PGDer_2, args)
 
     # ==================================================================================================
     # 6. Load pre-trained model
     # ==================================================================================================
 
     # ==================================================================================================
-    # 7. Training and Validation
+    # 7. Train standard model
     # ==================================================================================================
-    trainer.train(g, features, train_mask, train_label, val_mask, val_label)
+    m_l = train_mask, train_label, val_mask, val_label
+    orig_outputs, orig_graph_repr, orig_att = trainer.train_standard(g, features, m_l)
+    trainer.evaluate(g, features, test_mask, test_label, 'standard')
 
     # ==================================================================================================
-    # 8. Testing
+    # 7. Train our FGAI
     # ==================================================================================================
-    trainer.evaluate(g, features, test_mask, test_label)
+    trainer.train_FGAI(g, features, m_l, orig_outputs, orig_graph_repr, orig_att)
+    trainer.evaluate(g, features, test_mask, test_label, 'FGAI')
