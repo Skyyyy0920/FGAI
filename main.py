@@ -76,24 +76,24 @@ if __name__ == '__main__':
     PGDer = PGDAttacker(radius=args.pgd_radius, steps=args.pgd_step, step_size=args.pgd_step_size,
                         random_start=True, norm_type=args.pgd_norm_type, ascending=True)
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(standard_model.parameters(), lr=5e-3, weight_decay=5e-4)
     optimizer_FGAI = optim.Adam(FGAI.parameters(), lr=5e-3, weight_decay=5e-4)
 
-    trainer = Trainer(standard_model, FGAI, criterion, optimizer, optimizer_FGAI, PGDer, args)
+    FGAI_trainer = FGAITrainer(FGAI, criterion, optimizer_FGAI, PGDer, args)
 
     # ==================================================================================================
-    # 6. Load pre-trained model
+    # 6. Load pre-trained standard model
     # ==================================================================================================
+    standard_model.load_state_dict(torch.load('model_parameters.pth'))
+    standard_model.eval()
 
-    # ==================================================================================================
-    # 7. Train standard model
-    # ==================================================================================================
-    m_l = train_mask, train_label, val_mask, val_label
-    orig_outputs, orig_graph_repr, orig_att = trainer.train_standard(g, features, m_l)
-    trainer.evaluate(g, features, test_mask, test_label, 'standard')
+    tensor_dict = torch.load('tensors.pth')
+    orig_outputs = tensor_dict['orig_outputs']
+    orig_graph_repr = tensor_dict['orig_graph_repr']
+    orig_att = tensor_dict['orig_att']
 
     # ==================================================================================================
     # 7. Train our FGAI
     # ==================================================================================================
-    trainer.train_FGAI(g, features, m_l, orig_outputs, orig_graph_repr, orig_att)
-    trainer.evaluate(g, features, test_mask, test_label, 'FGAI')
+    m_l = train_mask, train_label, val_mask, val_label
+    FGAI_trainer.train(g, features, m_l, orig_outputs, orig_graph_repr, orig_att)
+    evaluate(FGAI, criterion, g, features, test_mask, test_label)

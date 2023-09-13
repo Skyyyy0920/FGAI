@@ -1,15 +1,11 @@
 import os
-import re
 import dgl
-import glob
 import torch
 import random
-import collections
+import logging
 import numpy as np
-import pandas as pd
-import networkx as nx
 from pathlib import Path
-import matplotlib.pyplot as plt
+from sklearn.metrics import accuracy_score
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
@@ -126,3 +122,14 @@ def topK_overlap_loss(new_att, old_att, g: dgl.DGLGraph, K=2, metric='l1'):
             raise ValueError(f"Unknown metric: {metric}")
 
     return loss
+
+
+def evaluate(model, criterion, g, features, test_mask, test_label):
+    model.eval()
+    with torch.no_grad():
+        test_outputs, graph_rep, _ = model(g, features)
+        test_loss = criterion(test_outputs[test_mask], test_label)
+        test_pred = torch.argmax(test_outputs[test_mask], dim=1)
+        test_accuracy = accuracy_score(test_label.cpu(), test_pred.cpu())
+
+    logging.info(f'Test Loss: {test_loss.item():.4f} | Test Accuracy: {test_accuracy:.4f}')
