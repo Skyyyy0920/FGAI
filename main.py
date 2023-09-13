@@ -2,6 +2,7 @@ import yaml
 import time
 import pickle
 import zipfile
+from utils import *
 from model import *
 from config import *
 from dataset import *
@@ -74,12 +75,11 @@ if __name__ == '__main__':
                              n_layers=1, n_heads=[8, 1]).to(device=args.device)
     PGDer = PGDAttacker(radius=args.pgd_radius, steps=args.pgd_step, step_size=args.pgd_step_size,
                         random_start=True, norm_type=args.pgd_norm_type, ascending=True)
-    PGDer_2 = PGDAttacker(radius=args.x_pgd_radius, steps=args.x_pgd_step, step_size=args.x_pgd_step_size,
-                          random_start=True, norm_type=args.x_pgd_norm_type, ascending=True)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(standard_model.parameters(), lr=5e-3, weight_decay=5e-4)
+    optimizer_FGAI = optim.Adam(FGAI.parameters(), lr=5e-3, weight_decay=5e-4)
 
-    trainer = Trainer(standard_model, FGAI, criterion, optimizer, PGDer, PGDer_2, args)
+    trainer = Trainer(standard_model, FGAI, criterion, optimizer, optimizer_FGAI, PGDer, args)
 
     # ==================================================================================================
     # 6. Load pre-trained model

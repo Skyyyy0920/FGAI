@@ -1,20 +1,17 @@
-import json
 import torch
 import logging
-import numpy as np
-from tqdm import tqdm
-from utils import *
+from utils import TVD, topK_overlap_loss
 from sklearn.metrics import accuracy_score
 
 
 class Trainer:
-    def __init__(self, standard_model, FGAI, criterion, optimizer, PGDer, PGDer_2, args):
+    def __init__(self, standard_model, FGAI, criterion, optimizer, optimizer_FGAI, PGDer, args):
         self.standard_model = standard_model
         self.FGAI = FGAI
         self.criterion = criterion
         self.optimizer = optimizer
+        self.optimizer_FGAI = optimizer_FGAI
         self.PGDer = PGDer
-        self.PGDer_2 = PGDer_2
         self.device = args.device
         self.K = args.K
         self.lambda_1 = args.lambda_1
@@ -43,44 +40,51 @@ class Trainer:
 
             logging.info(f'Epoch [{epoch + 1}/{self.num_epochs}] | Train Loss: {loss.item():.4f} | '
                          f'Val Loss: {val_loss.item():.4f} | Val Accuracy: {val_accuracy:.4f}')
+
+        # Fix the parameters of the standard model
+        for pp in self.standard_model.parameters():
+            pp.requires_grad = False
+
         return original_outputs, original_graph_repr, original_att
 
-    def train_FGAI(self, g, features, m_l, original_outputs, original_graph_repr, original_att):
+    def train_FGAI(self, g, features, m_l, orig_outputs, orig_graph_repr, orig_att):
         train_mask, train_label, val_mask, val_label = m_l
         for epoch in range(self.num_epochs):
             self.FGAI.train()
 
-            # 1. Closeness of Prediction
-            closeness_of_prediction_loss = self.criterion(original_outputs[train_mask], train_label)
+            FGAI_outputs, FGAI_graph_repr, FGAI_att = self.FGAI(g, features)
 
-            # 2. Constraint of Stability. Perturb e(x) to ensure robustness of models
-            new_features = self.PGDer.perturb(batch_TVD, features, train_mask, train_label, g, self.standard_model)
-            new_outputs, new_graph_repr, new_att = self.standard_model(g, new_features)
-            adversarial_loss = self.criterion(new_outputs[train_mask], train_label)
+            # 1. Closeness of Prediction
+            closeness_of_prediction_loss = TVD(FGAI_outputs[train_mask], orig_outputs[train_mask])
+
+            # 2. Constraint of Stability. Perturb δ(x) to ensure robustness of FGAI
+            feats_delta = self.PGDer.perturb_delta(features, train_mask, FGAI_outputs, g, self.FGAI)
+            new_outputs, new_graph_repr, new_att = self.FGAI(g, feats_delta)
+            adversarial_loss = TVD(new_outputs[train_mask], FGAI_outputs[train_mask])
 
             # 3. Stability of Explanation. Perturb 𝝆(x) to ensure robustness of explanation of FGAI
-            new_features_2 = self.PGDer_2.perturb(batch_TVD, features, train_mask, train_label, g, self.standard_model)
-            new_outputs_2, new_graph_repr_2, new_att_2 = self.standard_model(g, new_features_2)
+            feats_rho = self.PGDer.perturb_rho(features, FGAI_att, g, self.FGAI)
+            new_outputs_2, new_graph_repr_2, new_att_2 = self.FGAI(g, feats_rho)
             stability_of_explanation_loss = 0
-            for i in range(original_att.shape[1]):
-                stability_of_explanation_loss += topk_overlap_loss(new_att_2[:, i], new_att[:, i], g, self.K, 'l1')
+            for i in range(orig_att.shape[1]):
+                stability_of_explanation_loss += topK_overlap_loss(new_att_2[:, i], FGAI_att[:, i], g, self.K, 'l1')
 
             # 4. Similarity of Explanation
             similarity_of_explanation_loss = 0
-            for i in range(original_att.shape[1]):
-                similarity_of_explanation_loss += topk_overlap_loss(new_att[:, i], original_att[:, i], g, self.K, 'l1')
+            for i in range(orig_att.shape[1]):
+                similarity_of_explanation_loss += topK_overlap_loss(FGAI_att[:, i], orig_att[:, i], g, self.K, 'l1')
 
             loss = closeness_of_prediction_loss + adversarial_loss * self.lambda_1 + \
                    stability_of_explanation_loss * self.lambda_2 + similarity_of_explanation_loss * self.lambda_3
 
             # Backpropagation
-            self.optimizer.zero_grad()
+            self.optimizer_FGAI.zero_grad()
             loss.backward()
-            self.optimizer.step()
+            self.optimizer_FGAI.step()
 
-            self.standard_model.eval()
+            self.FGAI.eval()
             with torch.no_grad():
-                val_outputs, original_graph_repr, _ = self.standard_model(g, features)
+                val_outputs, orig_graph_repr, _ = self.FGAI(g, features)
                 val_loss = self.criterion(val_outputs[val_mask], val_label)
                 val_pred = torch.argmax(val_outputs[val_mask], dim=1)
                 val_accuracy = accuracy_score(val_label.cpu(), val_pred.cpu())

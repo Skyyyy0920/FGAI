@@ -25,7 +25,7 @@ def get_args():
                         help='Dataset name')
 
     # Experimental Setup
-    parser.add_argument('--num_epochs', type=int, default=200, help='Training epoch')
+    parser.add_argument('--num_epochs', type=int, default=2, help='Training epoch')
 
     parser.add_argument('--pgd_radius', type=float, default=0.1, help='Attack radius')
     parser.add_argument('--pgd_step', type=float, default=10, help='How many step to conduct PGD')

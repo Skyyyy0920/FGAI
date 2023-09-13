@@ -57,11 +57,11 @@ def k_shell_algorithm(adj_matrix):
     return k_values
 
 
-def TVD(predictions, targets):  # accepts two numpy arrays of dimension: (num. instances, )
+def TVD_numpy(predictions, targets):  # accepts two numpy arrays of dimension: (num. instances, )
     return (0.5 * np.abs(predictions - targets)).sum()
 
 
-def batch_TVD(predictions, targets, reduce=True):  # accepts two Torch tensors... " "
+def TVD(predictions: torch.Tensor, targets: torch.Tensor, reduce=True):
     if not reduce:
         return 0.5 * torch.abs(predictions - targets)
     else:
@@ -78,7 +78,7 @@ def JSD(a, b):
     return loss
 
 
-def topk_overlap_loss(new_att, old_att, g: dgl.DGLGraph, K=2, metric='l1'):
+def topK_overlap_loss(new_att, old_att, g: dgl.DGLGraph, K=2, metric='l1'):
     new_att, old_att = new_att.squeeze(), old_att.squeeze()
     src, dst = g.edges()
     loss = 0
