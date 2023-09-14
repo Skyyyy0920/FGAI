@@ -19,7 +19,6 @@ class StandardTrainer:
             original_outputs, original_graph_repr, original_att = self.model(g, features)
             loss = self.criterion(original_outputs[train_mask], train_label)
             self.optimizer.zero_grad()
-            # loss.backward(retain_graph=True)
             loss.backward()
             self.optimizer.step()
 

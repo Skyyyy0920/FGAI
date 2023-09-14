@@ -27,7 +27,7 @@ def get_args():
     # Experimental Setup
     parser.add_argument('--num_epochs', type=int, default=200, help='Training epoch')
 
-    parser.add_argument('--pgd_radius', type=float, default=0.1, help='Attack radius')
+    parser.add_argument('--pgd_radius', type=float, default=0.05, help='Attack radius')
     parser.add_argument('--pgd_step', type=float, default=10, help='How many step to conduct PGD')
     parser.add_argument('--pgd_step_size', type=float, default=0.02, help='Coefficient of PGD')
     parser.add_argument('--pgd_norm_type', type=str, default="l-infty", help='Which norm of your noise')

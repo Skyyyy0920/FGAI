@@ -85,6 +85,7 @@ if __name__ == '__main__':
     # ==================================================================================================
     standard_model.load_state_dict(torch.load('model_parameters.pth'))
     standard_model.eval()
+    evaluate(standard_model, criterion, g, features, test_mask, test_label)
 
     tensor_dict = torch.load('tensors.pth')
     orig_outputs = tensor_dict['orig_outputs']

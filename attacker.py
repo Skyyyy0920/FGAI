@@ -47,7 +47,7 @@ class PGDAttacker:
         for pp in target_model.parameters():
             pp.requires_grad = False
 
-        for step in tqdm(range(self.steps)):
+        for step in range(self.steps):
             adv_feats.requires_grad_()
             y_delta, _, _ = target_model(graph, adv_feats)
             loss = TVD(y, y_delta)
@@ -93,7 +93,7 @@ class PGDAttacker:
         for pp in target_model.parameters():
             pp.requires_grad = False
 
-        for step in tqdm(range(self.steps)):
+        for step in range(self.steps):
             adv_feats.requires_grad_()
             _, _, att = target_model(graph, adv_feats)
             loss = 0
