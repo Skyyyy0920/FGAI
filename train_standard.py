@@ -39,9 +39,18 @@ if __name__ == '__main__':
     num_classes = dataset.num_classes
 
     criterion = nn.CrossEntropyLoss()
-    standard_model = GATNodeClassifier(in_feats=num_feats, hid_dim=8, n_classes=num_classes, n_layers=1,
-                                       n_heads=[8, 1]).to(args.device)
-    optimizer = optim.Adam(standard_model.parameters(), lr=5e-3, weight_decay=5e-4)
+    if args.dataset == 'PubmedGraphDataset' or args.dataset == 'CoraGraphDataset':
+        standard_model = GATNodeClassifier(in_feats=num_feats, hid_dim=8, n_classes=num_classes, n_layers=1,
+                                           n_heads=[8, 1]).to(args.device)
+        optimizer = optim.Adam(standard_model.parameters(), lr=5e-3, weight_decay=5e-4)
+    elif args.dataset == 'CiteseerGraphDataset':
+        standard_model = GATNodeClassifier(in_feats=num_feats, hid_dim=8, n_classes=num_classes, n_layers=1,
+                                           n_heads=[8, 8]).to(args.device)
+        optimizer = optim.Adam(standard_model.parameters(), lr=5e-3, weight_decay=1e-3)
+    else:
+        standard_model = GATNodeClassifier(in_feats=num_feats, hid_dim=8, n_classes=num_classes, n_layers=1,
+                                           n_heads=[8, 1]).to(args.device)
+        optimizer = optim.Adam(standard_model.parameters(), lr=5e-3, weight_decay=5e-4)
 
     std_trainer = StandardTrainer(standard_model, criterion, optimizer, args)
 
