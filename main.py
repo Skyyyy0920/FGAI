@@ -83,11 +83,11 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 6. Load pre-trained standard model
     # ==================================================================================================
-    standard_model.load_state_dict(torch.load('model_parameters.pth'))
+    standard_model.load_state_dict(torch.load(f'./standard_model/{args.dataset}_best/model_parameters.pth'))
     standard_model.eval()
     evaluate(standard_model, criterion, g, features, test_mask, test_label)
 
-    tensor_dict = torch.load('tensors.pth')
+    tensor_dict = torch.load(f'./standard_model/{args.dataset}_best/tensors.pth')
     orig_outputs = tensor_dict['orig_outputs']
     orig_graph_repr = tensor_dict['orig_graph_repr']
     orig_att = tensor_dict['orig_att']

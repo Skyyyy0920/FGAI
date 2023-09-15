@@ -12,7 +12,7 @@ if __name__ == '__main__':
     for handler in logging.root.handlers[:]:
         logging.root.removeHandler(handler)
     logging_time = time.strftime('%m-%d_%H-%M', time.localtime())
-    save_dir = os.path.join(args.save_path, f"standard_model_{args.dataset}_{logging_time}")
+    save_dir = os.path.join("standard_model", f"{args.dataset}")
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
     print(f"Saving path: {save_dir}")
@@ -50,6 +50,6 @@ if __name__ == '__main__':
 
     evaluate(standard_model, criterion, g, features, test_mask, test_label)
 
-    torch.save(standard_model.state_dict(), 'model_parameters.pth')
+    torch.save(standard_model.state_dict(), os.path.join(save_dir, 'model_parameters.pth'))
     tensor_dict = {'orig_outputs': orig_outputs, 'orig_graph_repr': orig_graph_repr, 'orig_att': orig_att}
-    torch.save(tensor_dict, 'tensors.pth')
+    torch.save(tensor_dict, os.path.join(save_dir, 'tensors.pth'))
