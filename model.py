@@ -7,8 +7,6 @@ from dgl.nn.pytorch.utils import Identity
 import torch
 import torch.nn as nn
 import dgl.nn.pytorch as dglnn
-import scipy.sparse as sp
-from scipy.sparse import csr_matrix
 import torch.nn.functional as F
 from utils import k_shell_algorithm
 
