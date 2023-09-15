@@ -76,7 +76,7 @@ if __name__ == '__main__':
     PGDer = PGDAttacker(radius=args.pgd_radius, steps=args.pgd_step, step_size=args.pgd_step_size,
                         random_start=True, norm_type=args.pgd_norm_type, ascending=True)
     criterion = nn.CrossEntropyLoss()
-    optimizer_FGAI = optim.Adam(FGAI.parameters(), lr=5e-3, weight_decay=5e-4)
+    optimizer_FGAI = optim.Adam(FGAI.parameters(), lr=1e-2, weight_decay=5e-4)
 
     FGAI_trainer = FGAITrainer(FGAI, optimizer_FGAI, PGDer, args)
 
@@ -98,3 +98,8 @@ if __name__ == '__main__':
     m_l = train_mask, train_label, val_mask, val_label
     FGAI_trainer.train(g, features, m_l, orig_outputs, orig_graph_repr, orig_att)
     evaluate(FGAI, criterion, g, features, test_mask, test_label)
+
+    # ==================================================================================================
+    # 7. Save FGAI
+    # ==================================================================================================
+    torch.save(FGAI.state_dict(), 'FGAI_parameters.pth')

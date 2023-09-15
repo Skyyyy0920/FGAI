@@ -40,7 +40,7 @@ def get_args():
     parser.add_argument('--lambda_1', type=float, default=5e-2)
     parser.add_argument('--lambda_2', type=float, default=5e-2)
     parser.add_argument('--lambda_3', type=float, default=5e-2)
-    parser.add_argument('--K', type=int, default=4)
+    parser.add_argument('--K', type=int, default=2)
 
     parser.add_argument('--save_path', type=str, default='./checkpoints/', help='Checkpoints saving path')
 
