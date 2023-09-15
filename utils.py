@@ -5,7 +5,7 @@ import random
 import logging
 import numpy as np
 from pathlib import Path
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, f1_score
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
@@ -131,5 +131,7 @@ def evaluate(model, criterion, g, features, test_mask, test_label):
         test_loss = criterion(test_outputs[test_mask], test_label)
         test_pred = torch.argmax(test_outputs[test_mask], dim=1)
         test_accuracy = accuracy_score(test_label.cpu(), test_pred.cpu())
+        test_f1_score = f1_score(test_label.cpu(), test_pred.cpu(), average='micro')
 
-    logging.info(f'Test Loss: {test_loss.item():.4f} | Test Accuracy: {test_accuracy:.4f}')
+    logging.info(
+        f'Test Loss: {test_loss.item():.4f} | Test Accuracy: {test_accuracy:.4f} | Test F1 Score: {test_f1_score:.4f}')

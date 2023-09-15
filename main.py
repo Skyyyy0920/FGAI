@@ -78,7 +78,7 @@ if __name__ == '__main__':
     criterion = nn.CrossEntropyLoss()
     optimizer_FGAI = optim.Adam(FGAI.parameters(), lr=5e-3, weight_decay=5e-4)
 
-    FGAI_trainer = FGAITrainer(FGAI, criterion, optimizer_FGAI, PGDer, args)
+    FGAI_trainer = FGAITrainer(FGAI, optimizer_FGAI, PGDer, args)
 
     # ==================================================================================================
     # 6. Load pre-trained standard model
