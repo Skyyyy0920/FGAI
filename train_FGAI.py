@@ -74,7 +74,7 @@ if __name__ == '__main__':
     FGAI = GATNodeClassifier(in_feats=num_feats, hid_dim=8, n_classes=num_classes,
                              n_layers=1, n_heads=[8, 1]).to(device=args.device)
     PGDer = PGDAttacker(radius=args.pgd_radius, steps=args.pgd_step, step_size=args.pgd_step_size,
-                        random_start=True, norm_type=args.pgd_norm_type, ascending=True)
+                        random_start=True, norm_type=args.pgd_norm_type, ascending=True, device=args.device)
     criterion = nn.CrossEntropyLoss()
     optimizer_FGAI = optim.Adam(FGAI.parameters(), lr=1e-2, weight_decay=5e-4)
 
@@ -88,9 +88,9 @@ if __name__ == '__main__':
     evaluate(standard_model, criterion, g, features, test_mask, test_label)
 
     tensor_dict = torch.load(f'./standard_model/{args.dataset}_best/tensors.pth')
-    orig_outputs = tensor_dict['orig_outputs']
-    orig_graph_repr = tensor_dict['orig_graph_repr']
-    orig_att = tensor_dict['orig_att']
+    orig_outputs = tensor_dict['orig_outputs'].to(device=args.device)
+    orig_graph_repr = tensor_dict['orig_graph_repr'].to(device=args.device)
+    orig_att = tensor_dict['orig_att'].to(device=args.device)
 
     # ==================================================================================================
     # 7. Train our FGAI

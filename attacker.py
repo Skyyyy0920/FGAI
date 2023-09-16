@@ -31,9 +31,10 @@ class PGDAttacker:
     def perturb_delta(self, feats, mask, y, graph, target_model):  # TVD loss
         adv_feats = feats.clone()
 
+        # 随机生成一个(2708, 1433)形状的二进制矩阵，每个元素都是 0 或 1
         ratio = 0.05
         binary_matrix = np.random.choice([0, 1], size=feats.shape, p=[1 - ratio / 100, ratio / 100])
-        mask_ = binary_matrix.astype(bool)  # 随机生成一个(2708, 1433)形状的二进制矩阵，每个元素都是 0 或 1
+        mask_ = torch.tensor(binary_matrix.astype(bool)).to(self.device)
 
         if self.norm_type == 'l-infty':
             adv_feats += 2 * (torch.rand_like(feats) - 0.5) * self.radius * mask_  # [-radius, radius]
@@ -77,9 +78,10 @@ class PGDAttacker:
     def perturb_rho(self, feats, orig_att, graph, target_model):  # top-K loss
         adv_feats = feats.clone()
 
+        # 随机生成一个(2708, 1433)形状的二进制矩阵，每个元素都是 0 或 1
         ratio = 0.05
         binary_matrix = np.random.choice([0, 1], size=feats.shape, p=[1 - ratio / 100, ratio / 100])
-        mask_ = binary_matrix.astype(bool)  # 随机生成一个(2708, 1433)形状的二进制矩阵，每个元素都是 0 或 1
+        mask_ = torch.tensor(binary_matrix.astype(bool)).to(self.device)
 
         if self.norm_type == 'l-infty':
             adv_feats += 2 * (torch.rand_like(feats) - 0.5) * self.radius * mask_  # [-radius, radius]
