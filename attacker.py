@@ -22,6 +22,8 @@ class PGDAttacker:
                 norm = (adv_x.reshape(adv_x.shape[0], -1) ** 2).sum(dim=1).sqrt()
             elif self.norm_type == 'l1':
                 norm = adv_x.reshape(adv_x.shape[0], -1).abs().sum(dim=1)
+            else:
+                raise ValueError(f"Unknown norm type: {self.norm_type}")
             norm = norm.reshape(-1, *([1] * (len(x.shape) - 1)))
             adv_x /= (norm + 1e-10)
             adv_x *= norm.clamp(max=self.radius)

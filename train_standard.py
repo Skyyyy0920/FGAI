@@ -28,15 +28,31 @@ if __name__ == '__main__':
 
     dataset = load_dataset(args)
     g = dataset[0].to(device=args.device)
-    train_mask = g.ndata['train_mask']
-    val_mask = g.ndata['val_mask']
-    test_mask = g.ndata['test_mask']
-    train_label = g.ndata['label'][train_mask]
-    val_label = g.ndata['label'][val_mask]
-    test_label = g.ndata['label'][test_mask]
     features = g.ndata["feat"]
     num_feats = features.shape[1]
     num_classes = dataset.num_classes
+    # train_mask = g.ndata['train_mask']
+    # val_mask = g.ndata['val_mask']
+    # test_mask = g.ndata['test_mask']
+    # train_label = g.ndata['label'][train_mask]
+    # val_label = g.ndata['label'][val_mask]
+    # test_label = g.ndata['label'][test_mask]
+
+    num_nodes = features.shape[0]
+    indices = np.arange(num_nodes)
+    np.random.shuffle(indices)
+    num_train = int(0.6 * num_nodes)
+    num_val = int(0.2 * num_nodes)
+    num_test = num_nodes - num_train - num_val
+    train_mask = torch.zeros(num_nodes, dtype=torch.bool)
+    val_mask = torch.zeros(num_nodes, dtype=torch.bool)
+    test_mask = torch.zeros(num_nodes, dtype=torch.bool)
+    train_mask[indices[:num_train]] = 1
+    val_mask[indices[num_train:num_train + num_val]] = 1
+    test_mask[indices[num_train + num_val:]] = 1
+    train_label = g.ndata['label'][train_mask]
+    val_label = g.ndata['label'][val_mask]
+    test_label = g.ndata['label'][test_mask]
 
     criterion = nn.CrossEntropyLoss()
     if args.dataset == 'PubmedGraphDataset' or args.dataset == 'CoraGraphDataset':
@@ -62,3 +78,5 @@ if __name__ == '__main__':
     torch.save(standard_model.state_dict(), os.path.join(save_dir, 'model_parameters.pth'))
     tensor_dict = {'orig_outputs': orig_outputs, 'orig_graph_repr': orig_graph_repr, 'orig_att': orig_att}
     torch.save(tensor_dict, os.path.join(save_dir, 'tensors.pth'))
+    mask_dict = {'train_mask': train_mask, 'val_mask': val_mask, 'test_mask': test_mask}
+    torch.save(mask_dict, os.path.join(save_dir, 'masks.pth'))

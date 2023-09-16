@@ -2,6 +2,7 @@ import torch
 import argparse
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = 'cpu'
 
 
 def get_args():
@@ -19,12 +20,10 @@ def get_args():
                         default='CoraGraphDataset',
                         # default='CiteseerGraphDataset',
                         # default='PPIDataset',
-                        # default='RedditDataset',
-                        # default='YelpDataset',
                         help='Dataset name')
 
     # Experimental Setup
-    parser.add_argument('--num_epochs', type=int, default=200, help='Training epoch')
+    parser.add_argument('--num_epochs', type=int, default=300, help='Training epoch')
 
     parser.add_argument('--pgd_radius', type=float, default=0.05, help='Attack radius')
     parser.add_argument('--pgd_step', type=float, default=10, help='How many step to conduct PGD')
@@ -34,7 +33,7 @@ def get_args():
     parser.add_argument('--lambda_1', type=float, default=5e-2)
     parser.add_argument('--lambda_2', type=float, default=5e-2)
     parser.add_argument('--lambda_3', type=float, default=5e-2)
-    parser.add_argument('--K', type=int, default=2)
+    parser.add_argument('--K', type=int, default=4)
 
     parser.add_argument('--save_path', type=str, default='./checkpoints/', help='Checkpoints saving path')
 

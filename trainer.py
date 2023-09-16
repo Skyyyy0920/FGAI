@@ -46,7 +46,7 @@ class FGAITrainer:
         self.lambda_3 = args.lambda_3
         self.num_epochs = args.num_epochs
 
-    def train(self, g, features, m_l, orig_outputs, orig_graph_repr, orig_att):
+    def train(self, g, features, m_l, orig_outputs, orig_graph_repr, orig_att, criterion, test_mask, test_label):
         train_mask, train_label, val_mask, val_label = m_l
         for epoch in range(self.num_epochs):
             self.model.train()
@@ -59,7 +59,7 @@ class FGAITrainer:
             # 2. Constraint of Stability. Perturb δ(x) to ensure robustness of FGAI
             feats_delta = self.PGDer.perturb_delta(features, train_mask, FGAI_outputs, g, self.model)
             new_outputs, new_graph_repr, new_att = self.model(g, feats_delta)
-            adversarial_loss = TVD(new_outputs[train_mask], FGAI_outputs[train_mask])
+            adversarial_loss = TVD(new_outputs, FGAI_outputs)
 
             # 3. Stability of Explanation. Perturb 𝝆(x) to ensure robustness of explanation of FGAI
             feats_rho = self.PGDer.perturb_rho(features, FGAI_att, g, self.model)
@@ -89,3 +89,5 @@ class FGAITrainer:
 
             logging.info(f'Epoch [{epoch + 1}/{self.num_epochs}] | Train Loss: {loss.item():.4f} | '
                          f'Val Accuracy: {val_accuracy:.4f}')
+
+            evaluate(self.model, criterion, g, features, test_mask, test_label)

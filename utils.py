@@ -80,11 +80,7 @@ def topK_overlap_loss(new_att, old_att, g: dgl.DGLGraph, K=2, metric='l1'):
     loss = 0
 
     for node_id in g.nodes():
-        # neighbors = g.successors(node_id)
-        # neighbor_ids = neighbors.numpy()
         indices = torch.where(src == node_id)[0]
-        if len(indices) < K:
-            continue
         old_neighbor_att = old_att[indices]  # 1维tensor, 假设邻居节点有n个, 则为(n, )的tensor
         new_neighbor_att = new_att[indices]
 

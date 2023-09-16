@@ -11,6 +11,9 @@ import torch.nn.functional as F
 from utils import k_shell_algorithm
 
 
+# from dgl.nn import GATConv
+
+
 class GATConv(nn.Module):
     def __init__(
             self,
@@ -167,30 +170,35 @@ class GATNodeClassifier(nn.Module):
 
 
 class GATGraphClassifier(nn.Module):
-    def __init__(self, in_feats, hid_dim, n_classes, n_layers, n_heads, readout_type='mean'):
+    def __init__(self, in_feats, hid_dim, n_classes, n_layers, n_heads, readout_type='top-K'):
         super(GATGraphClassifier, self).__init__()
-        self.dropout = 0.5
         self.readout_type = readout_type
 
-        self.attentions = [GATConv(in_feats, hid_dim, n_heads[0], 0.6, 0.6, activation=F.elu) for _ in range(n_heads)]
-        for i, attention in enumerate(self.attentions):
-            self.add_module('attention_{}'.format(i), attention)
+        self.layers = nn.ModuleList()
+        self.layers.append(GATConv(in_feats, hid_dim, n_heads[0], 0.6, 0.6, activation=F.elu))
 
-        self.out_att = GATConv(hid_dim * n_heads[-2], n_classes, n_heads[-1], 0.6, 0.6, activation=None)
+        for i in range(1, n_layers):
+            self.layers.append(GATConv(hid_dim * n_heads[i - 1], hid_dim, n_heads[i], 0.6, 0.6, activation=F.elu))
+        self.out_layer = GATConv(hid_dim * n_heads[-2], n_classes, n_heads[-1], 0.6, 0.6, activation=None)
 
-    def forward(self, x, adj):
-        x = F.dropout(x, self.dropout, training=self.training)
-        x = torch.cat([att(x, adj) for att in self.attentions], dim=1)
-        x = F.dropout(x, self.dropout, training=self.training)  # N * hidden_dim
-        if self.readout_type == 'top-k':
+    def forward(self, g, features):
+        h = features
+        for layer in self.layers:
+            h, att = layer(g, h, get_attention=True)
+            h = h.flatten(1)  # use concat to handle multi-head. for mean method, use h = h.mean(1)
+        attention = att
+        h, att = self.out_layer(g, h, get_attention=True)
+
+        if self.readout_type == 'top-K':
             k_values = torch.tensor(k_shell_algorithm(adj), dtype=torch.float32)
             k_values /= k_values.sum()
-            x = F.elu(self.out_att(x, adj))
-            x = torch.matmul(k_values, x).unsqueeze(0)  # 1 * n_classes
+            graph_representation = torch.matmul(k_values, h).unsqueeze(0)
+        elif self.readout_type == 'mean':
+            graph_representation = h.mean(dim=0).unsqueeze(0)  # 1 * n_classes
         else:
-            x = F.elu(self.out_att(x, adj))  # 1 * hidden_dim
-            x = torch.mean(x, dim=0).unsqueeze(0)  # 1 * n_classes
-        return x
+            raise ValueError(f"Unknown readout type: {self.readout_type}")
+
+        return graph_representation, attention
 
 
 class GraphClassifierExample(nn.Module):

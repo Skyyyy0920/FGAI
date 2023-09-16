@@ -56,12 +56,6 @@ if __name__ == '__main__':
     # ==================================================================================================
     dataset = load_dataset(args)
     g = dataset[0].to(device=args.device)
-    train_mask = g.ndata['train_mask']
-    val_mask = g.ndata['val_mask']
-    test_mask = g.ndata['test_mask']
-    train_label = g.ndata['label'][train_mask]
-    val_label = g.ndata['label'][val_mask]
-    test_label = g.ndata['label'][test_mask]
     features = g.ndata["feat"]
     num_feats = features.shape[1]
     num_classes = dataset.num_classes
@@ -83,20 +77,28 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 6. Load pre-trained standard model
     # ==================================================================================================
-    standard_model.load_state_dict(torch.load(f'./standard_model/{args.dataset}_best/model_parameters.pth'))
+    standard_model.load_state_dict(torch.load(f'./standard_model/{args.dataset}/model_parameters.pth'))
     standard_model.eval()
-    evaluate(standard_model, criterion, g, features, test_mask, test_label)
 
-    tensor_dict = torch.load(f'./standard_model/{args.dataset}_best/tensors.pth')
+    tensor_dict = torch.load(f'./standard_model/{args.dataset}/tensors.pth')
     orig_outputs = tensor_dict['orig_outputs'].to(device=args.device)
     orig_graph_repr = tensor_dict['orig_graph_repr'].to(device=args.device)
     orig_att = tensor_dict['orig_att'].to(device=args.device)
+    mask_dict = torch.load(f'./standard_model/{args.dataset}/masks.pth')
+    train_mask = mask_dict['train_mask'].to(device=args.device)
+    val_mask = mask_dict['val_mask'].to(device=args.device)
+    test_mask = mask_dict['test_mask'].to(device=args.device)
+    train_label = g.ndata['label'][train_mask]
+    val_label = g.ndata['label'][val_mask]
+    test_label = g.ndata['label'][test_mask]
+
+    evaluate(standard_model, criterion, g, features, test_mask, test_label)
 
     # ==================================================================================================
     # 7. Train our FGAI
     # ==================================================================================================
     m_l = train_mask, train_label, val_mask, val_label
-    FGAI_trainer.train(g, features, m_l, orig_outputs, orig_graph_repr, orig_att)
+    FGAI_trainer.train(g, features, m_l, orig_outputs, orig_graph_repr, orig_att, criterion, test_mask, test_label)
     evaluate(FGAI, criterion, g, features, test_mask, test_label)
 
     # ==================================================================================================
