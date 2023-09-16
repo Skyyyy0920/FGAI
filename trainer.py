@@ -55,7 +55,6 @@ class FGAITrainer:
 
             # 1. Closeness of Prediction
             closeness_of_prediction_loss = TVD(FGAI_outputs, orig_outputs)
-            # closeness_of_prediction_loss = self.criterion(FGAI_outputs[train_mask], train_label)
 
             # 2. Constraint of Stability. Perturb δ(x) to ensure robustness of FGAI
             feats_delta = self.PGDer.perturb_delta(features, train_mask, FGAI_outputs, g, self.model)
