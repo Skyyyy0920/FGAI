@@ -1,13 +1,38 @@
 import time
+import argparse
 from model import *
-from config import *
 from dataset import *
 from trainer import *
 from attacker import *
 import torch.optim as optim
 
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+
+def get_args():
+    parser = argparse.ArgumentParser(description="MTNet's args")
+
+    # Operation environment
+    parser.add_argument('--seed', type=int, default=20010920, help='Random seed')
+    parser.add_argument('--device', type=str, default=device, help='Running on which device')
+
+    # Data
+    parser.add_argument('--task', type=str, default='node-level', help='task')  # default='graph-level'
+    parser.add_argument('--dataset',
+                        type=str,
+                        default='ogbn-arxiv',
+                        help='Dataset name')
+
+    # Experimental Setup
+    parser.add_argument('--num_epochs', type=int, default=300, help='Training epoch')
+
+    args = parser.parse_args()
+    return args
+
+
 if __name__ == '__main__':
     args = get_args()
+    setup_seed(args.seed)  # make the experiment repeatable
     print('\n' + '=' * 36 + ' Setup logger ' + '=' * 36)
     for handler in logging.root.handlers[:]:
         logging.root.removeHandler(handler)
@@ -26,43 +51,15 @@ if __name__ == '__main__':
     logging.getLogger('').addHandler(console)
     logging.getLogger('matplotlib.font_manager').disabled = True
 
-    dataset = load_dataset(args)
-    g = dataset[0].to(device=args.device)
+    g, label, train_idx, valid_idx, test_idx, num_classes = load_dataset(args)
     features = g.ndata["feat"]
     num_feats = features.shape[1]
-    num_classes = dataset.num_classes
-    # train_mask = g.ndata['train_mask']
-    # val_mask = g.ndata['val_mask']
-    # test_mask = g.ndata['test_mask']
-    # train_label = g.ndata['label'][train_mask]
-    # val_label = g.ndata['label'][val_mask]
-    # test_label = g.ndata['label'][test_mask]
-
-    num_nodes = features.shape[0]
-    indices = np.arange(num_nodes)
-    np.random.shuffle(indices)
-    num_train = int(0.6 * num_nodes)
-    num_val = int(0.2 * num_nodes)
-    num_test = num_nodes - num_train - num_val
-    train_mask = torch.zeros(num_nodes, dtype=torch.bool)
-    val_mask = torch.zeros(num_nodes, dtype=torch.bool)
-    test_mask = torch.zeros(num_nodes, dtype=torch.bool)
-    train_mask[indices[:num_train]] = 1
-    val_mask[indices[num_train:num_train + num_val]] = 1
-    test_mask[indices[num_train + num_val:]] = 1
-    train_label = g.ndata['label'][train_mask]
-    val_label = g.ndata['label'][val_mask]
-    test_label = g.ndata['label'][test_mask]
 
     criterion = nn.CrossEntropyLoss()
-    if args.dataset == 'PubmedGraphDataset' or args.dataset == 'CoraGraphDataset':
-        standard_model = GATNodeClassifier(in_feats=num_feats, hid_dim=8, n_classes=num_classes, n_layers=1,
-                                           n_heads=[8, 1]).to(args.device)
-        optimizer = optim.Adam(standard_model.parameters(), lr=5e-3, weight_decay=5e-4)
-    elif args.dataset == 'CiteseerGraphDataset':
-        standard_model = GATNodeClassifier(in_feats=num_feats, hid_dim=8, n_classes=num_classes, n_layers=1,
-                                           n_heads=[8, 8]).to(args.device)
-        optimizer = optim.Adam(standard_model.parameters(), lr=5e-3, weight_decay=1e-3)
+    if args.dataset == 'ogbn-arxiv':
+        standard_model = GATNodeClassifier(in_feats=num_feats, hid_dim=128, n_classes=num_classes, n_layers=4,
+                                           n_heads=[4, 4, 4, 4, 1], feat_drop=0.4, attn_drop=0.05).to(args.device)
+        optimizer = optim.Adam(standard_model.parameters(), lr=2e-3, weight_decay=0)
     else:
         standard_model = GATNodeClassifier(in_feats=num_feats, hid_dim=8, n_classes=num_classes, n_layers=1,
                                            n_heads=[8, 1]).to(args.device)
@@ -70,13 +67,10 @@ if __name__ == '__main__':
 
     std_trainer = StandardTrainer(standard_model, criterion, optimizer, args)
 
-    m_l = train_mask, train_label, val_mask, val_label
-    orig_outputs, orig_graph_repr, orig_att = std_trainer.train(g, features, m_l)
+    orig_outputs, orig_graph_repr, orig_att = std_trainer.train(g, features, label, train_idx, valid_idx)
 
-    evaluate(standard_model, criterion, g, features, test_mask, test_label)
+    evaluate(standard_model, criterion, g, features, label, test_idx)
 
     torch.save(standard_model.state_dict(), os.path.join(save_dir, 'model_parameters.pth'))
     tensor_dict = {'orig_outputs': orig_outputs, 'orig_graph_repr': orig_graph_repr, 'orig_att': orig_att}
     torch.save(tensor_dict, os.path.join(save_dir, 'tensors.pth'))
-    mask_dict = {'train_mask': train_mask, 'val_mask': val_mask, 'test_mask': test_mask}
-    torch.save(mask_dict, os.path.join(save_dir, 'masks.pth'))

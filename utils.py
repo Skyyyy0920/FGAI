@@ -120,14 +120,14 @@ def topK_overlap_loss(new_att, old_att, g: dgl.DGLGraph, K=2, metric='l1'):
     return loss
 
 
-def evaluate(model, criterion, g, features, test_mask, test_label):
+def evaluate(model, criterion, g, features, label, test_idx):
     model.eval()
     with torch.no_grad():
         test_outputs, graph_rep, _ = model(g, features)
-        test_loss = criterion(test_outputs[test_mask], test_label)
-        test_pred = torch.argmax(test_outputs[test_mask], dim=1)
-        test_accuracy = accuracy_score(test_label.cpu(), test_pred.cpu())
-        test_f1_score = f1_score(test_label.cpu(), test_pred.cpu(), average='weighted')
+        test_loss = criterion(test_outputs[test_idx], label[test_idx])
+        test_pred = torch.argmax(test_outputs[test_idx], dim=1)
+        test_accuracy = accuracy_score(label[test_idx].cpu(), test_pred.cpu())
+        test_f1_score = f1_score(label[test_idx].cpu(), test_pred.cpu(), average='micro')
 
     logging.info(
         f'Test Loss: {test_loss.item():.4f} | Test Accuracy: {test_accuracy:.4f} | Test F1 Score: {test_f1_score:.4f}')

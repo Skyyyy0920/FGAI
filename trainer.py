@@ -1,5 +1,4 @@
 from utils import *
-import torch.nn.functional as F
 
 
 class StandardTrainer:
@@ -10,13 +9,12 @@ class StandardTrainer:
         self.device = args.device
         self.num_epochs = args.num_epochs
 
-    def train(self, g, features, m_l):
-        train_mask, train_label, val_mask, val_label = m_l
+    def train(self, g, features, label, train_idx, valid_idx):
         original_outputs, original_graph_repr, original_att = None, None, None
         for epoch in range(self.num_epochs):
             self.model.train()
             original_outputs, original_graph_repr, original_att = self.model(g, features)
-            loss = self.criterion(original_outputs[train_mask], train_label)
+            loss = self.criterion(original_outputs[train_idx], label[train_idx])
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
@@ -24,9 +22,9 @@ class StandardTrainer:
             self.model.eval()
             with torch.no_grad():
                 val_outputs, _, _ = self.model(g, features)
-                val_loss = self.criterion(val_outputs[val_mask], val_label)
-                val_pred = torch.argmax(val_outputs[val_mask], dim=1)
-                val_accuracy = accuracy_score(val_label.cpu(), val_pred.cpu())
+                val_loss = self.criterion(val_outputs[valid_idx], label[valid_idx])
+                val_pred = torch.argmax(val_outputs[valid_idx], dim=1)
+                val_accuracy = accuracy_score(label[valid_idx].cpu(), val_pred.cpu())
 
             logging.info(f'Epoch [{epoch + 1}/{self.num_epochs}] | Train Loss: {loss.item():.4f} | '
                          f'Val Loss: {val_loss.item():.4f} | Val Accuracy: {val_accuracy:.4f}')
@@ -46,8 +44,7 @@ class FGAITrainer:
         self.lambda_3 = args.lambda_3
         self.num_epochs = args.num_epochs
 
-    def train(self, g, features, m_l, orig_outputs, orig_graph_repr, orig_att, criterion, test_mask, test_label):
-        train_mask, train_label, val_mask, val_label = m_l
+    def train(self, g, features, label, train_idx, valid_idx, orig_outputs, orig_graph_repr, orig_att, criterion):
         for epoch in range(self.num_epochs):
             self.model.train()
 
@@ -57,7 +54,7 @@ class FGAITrainer:
             closeness_of_prediction_loss = TVD(FGAI_outputs, orig_outputs)
 
             # 2. Constraint of Stability. Perturb δ(x) to ensure robustness of FGAI
-            feats_delta = self.PGDer.perturb_delta(features, train_mask, FGAI_outputs, g, self.model)
+            feats_delta = self.PGDer.perturb_delta(features, FGAI_outputs, g, self.model)
             new_outputs, new_graph_repr, new_att = self.model(g, feats_delta)
             adversarial_loss = TVD(new_outputs, FGAI_outputs)
 

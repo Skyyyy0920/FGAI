@@ -25,7 +25,6 @@ class GATConv(nn.Module):
             negative_slope=0.2,
             residual=False,
             activation=None,
-            # allow_zero_in_degree=False,
             allow_zero_in_degree=True,
             bias=True,
     ):
@@ -148,13 +147,15 @@ class GATConv(nn.Module):
 
 
 class GATNodeClassifier(nn.Module):
-    def __init__(self, in_feats, hid_dim, n_classes, n_layers, n_heads):
+    def __init__(self, in_feats, hid_dim, n_classes, n_layers, n_heads, feat_drop=0.75, attn_drop=0.05):
         super(GATNodeClassifier, self).__init__()
         self.layers = nn.ModuleList()
-        self.layers.append(GATConv(in_feats, hid_dim, n_heads[0], 0.6, 0.6, activation=F.elu))
+        self.layers.append(GATConv(in_feats, hid_dim, n_heads[0], feat_drop, attn_drop, activation=F.elu))
         for i in range(1, n_layers):
-            self.layers.append(GATConv(hid_dim * n_heads[i - 1], hid_dim, n_heads[i], 0.6, 0.6, activation=F.elu))
-        self.out_layer = GATConv(hid_dim * n_heads[-2], n_classes, n_heads[-1], 0.6, 0.6, activation=None)
+            in_hid_dim = hid_dim * n_heads[i - 1]
+            self.layers.append(GATConv(in_hid_dim, hid_dim, n_heads[i], feat_drop, attn_drop, activation=F.elu))
+        # self.out_layer = GATConv(hid_dim * n_heads[-2], n_classes, n_heads[-1], feat_drop, attn_drop, activation=None)
+        self.out_layer = nn.Linear(hid_dim * n_heads[-2], n_classes)
 
     def forward(self, g, features):
         h = features
@@ -163,8 +164,10 @@ class GATNodeClassifier(nn.Module):
             h = h.flatten(1)  # use concat to handle multi-head. for mean method, use h = h.mean(1)
         graph_representation = h.mean(dim=0)
         attention = att
-        h, att = self.out_layer(g, h, get_attention=True)
-        logits = h.mean(dim=1)
+        # h, att = self.out_layer(g, h, get_attention=True)
+        # logits = h.mean(dim=1)
+        h = self.out_layer(h)
+        logits = h
 
         return logits, graph_representation, attention
 
@@ -199,24 +202,6 @@ class GATGraphClassifier(nn.Module):
             raise ValueError(f"Unknown readout type: {self.readout_type}")
 
         return graph_representation, attention
-
-
-class GraphClassifierExample(nn.Module):
-    def __init__(self, in_dim, hidden_dim, n_classes):
-        super(GraphClassifierExample, self).__init__()
-        self.conv1 = dglnn.GraphConv(in_dim, hidden_dim)
-        self.conv2 = dglnn.GraphConv(hidden_dim, hidden_dim)
-        self.classify = nn.Linear(hidden_dim, n_classes)
-
-    def forward(self, g, h):
-        h = F.relu(self.conv1(g, h))
-        h = F.relu(self.conv2(g, h))
-        with g.local_scope():
-            g.ndata['h'] = h
-            # 使用平均读出计算图表示
-            hg = dgl.mean_nodes(g, 'h')  # N * hid_dim
-            out = self.classify(hg)  # num_graph * n_classes
-            return out
 
 
 class MultiTaskLoss(nn.Module):

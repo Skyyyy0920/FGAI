@@ -1,14 +1,48 @@
 import yaml
 import time
-import pickle
 import zipfile
-from utils import *
+import argparse
 from model import *
-from config import *
 from dataset import *
 from trainer import *
 from attacker import *
 import torch.optim as optim
+
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+
+def get_args():
+    parser = argparse.ArgumentParser(description="MTNet's args")
+
+    # Operation environment
+    parser.add_argument('--seed', type=int, default=20010920, help='Random seed')
+    parser.add_argument('--device', type=str, default=device, help='Running on which device')
+
+    # Data
+    parser.add_argument('--task', type=str, default='node-level', help='task')  # default='graph-level'
+    parser.add_argument('--dataset',
+                        type=str,
+                        default='ogbn-arxiv',
+                        help='Dataset name')
+
+    # Experimental Setup
+    parser.add_argument('--num_epochs', type=int, default=300, help='Training epoch')
+
+    parser.add_argument('--pgd_radius', type=float, default=0.05, help='Attack radius')
+    parser.add_argument('--pgd_step', type=float, default=10, help='How many step to conduct PGD')
+    parser.add_argument('--pgd_step_size', type=float, default=0.02, help='Coefficient of PGD')
+    parser.add_argument('--pgd_norm_type', type=str, default="l-infty", help='Which norm of your noise')
+
+    parser.add_argument('--lambda_1', type=float, default=5e-2)
+    parser.add_argument('--lambda_2', type=float, default=5e-2)
+    parser.add_argument('--lambda_3', type=float, default=5e-2)
+    parser.add_argument('--K', type=int, default=4)
+
+    parser.add_argument('--save_path', type=str, default='./checkpoints/', help='Checkpoints saving path')
+
+    args = parser.parse_args()
+    return args
+
 
 if __name__ == '__main__':
     # ==================================================================================================
@@ -54,11 +88,9 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 4. Prepare data
     # ==================================================================================================
-    dataset = load_dataset(args)
-    g = dataset[0].to(device=args.device)
+    g, label, train_idx, valid_idx, test_idx, num_classes = load_dataset(args)
     features = g.ndata["feat"]
     num_feats = features.shape[1]
-    num_classes = dataset.num_classes
 
     # ==================================================================================================
     # 5. Build models, define overall loss and optimizer
@@ -84,22 +116,14 @@ if __name__ == '__main__':
     orig_outputs = tensor_dict['orig_outputs'].to(device=args.device)
     orig_graph_repr = tensor_dict['orig_graph_repr'].to(device=args.device)
     orig_att = tensor_dict['orig_att'].to(device=args.device)
-    mask_dict = torch.load(f'./standard_model/{args.dataset}/masks.pth')
-    train_mask = mask_dict['train_mask'].to(device=args.device)
-    val_mask = mask_dict['val_mask'].to(device=args.device)
-    test_mask = mask_dict['test_mask'].to(device=args.device)
-    train_label = g.ndata['label'][train_mask]
-    val_label = g.ndata['label'][val_mask]
-    test_label = g.ndata['label'][test_mask]
 
-    evaluate(standard_model, criterion, g, features, test_mask, test_label)
+    evaluate(standard_model, criterion, g, features, label, test_idx)
 
     # ==================================================================================================
     # 7. Train our FGAI
     # ==================================================================================================
-    m_l = train_mask, train_label, val_mask, val_label
-    FGAI_trainer.train(g, features, m_l, orig_outputs, orig_graph_repr, orig_att, criterion, test_mask, test_label)
-    evaluate(FGAI, criterion, g, features, test_mask, test_label)
+    FGAI_trainer.train(g, features, label, train_idx, valid_idx, orig_outputs, orig_graph_repr, orig_att, criterion)
+    evaluate(FGAI, criterion, g, features, label, test_idx)
 
     # ==================================================================================================
     # 7. Save FGAI
