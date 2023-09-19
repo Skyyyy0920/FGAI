@@ -147,14 +147,13 @@ class GATConv(nn.Module):
 
 
 class GATNodeClassifier(nn.Module):
-    def __init__(self, in_feats, hid_dim, n_classes, n_layers, n_heads, feat_drop=0.75, attn_drop=0.05):
+    def __init__(self, in_feats, hid_dim, n_classes, n_layers, n_heads, feat_drop=0.4, attn_drop=0.05):
         super(GATNodeClassifier, self).__init__()
         self.layers = nn.ModuleList()
         self.layers.append(GATConv(in_feats, hid_dim, n_heads[0], feat_drop, attn_drop, activation=F.elu))
         for i in range(1, n_layers):
             in_hid_dim = hid_dim * n_heads[i - 1]
             self.layers.append(GATConv(in_hid_dim, hid_dim, n_heads[i], feat_drop, attn_drop, activation=F.elu))
-        # self.out_layer = GATConv(hid_dim * n_heads[-2], n_classes, n_heads[-1], feat_drop, attn_drop, activation=None)
         self.out_layer = nn.Linear(hid_dim * n_heads[-2], n_classes)
 
     def forward(self, g, features):
@@ -164,8 +163,6 @@ class GATNodeClassifier(nn.Module):
             h = h.flatten(1)  # use concat to handle multi-head. for mean method, use h = h.mean(1)
         graph_representation = h.mean(dim=0)
         attention = att
-        # h, att = self.out_layer(g, h, get_attention=True)
-        # logits = h.mean(dim=1)
         h = self.out_layer(h)
         logits = h
 

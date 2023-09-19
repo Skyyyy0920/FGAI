@@ -96,10 +96,10 @@ if __name__ == '__main__':
     # 5. Build models, define overall loss and optimizer
     # ==================================================================================================
     if args.dataset == 'ogbn-arxiv':
-        standard_model = GATNodeClassifier(in_feats=num_feats, hid_dim=256, n_classes=num_classes, n_layers=4,
-                                           n_heads=[4, 4, 4, 4, 1], feat_drop=0.4, attn_drop=0.05).to(args.device)
-        FGAI = GATNodeClassifier(in_feats=num_feats, hid_dim=256, n_classes=num_classes, n_layers=4,
-                                           n_heads=[4, 4, 4, 4, 1], feat_drop=0.4, attn_drop=0.05).to(args.device)
+        standard_model = GATNodeClassifier(in_feats=num_feats, hid_dim=128, n_classes=num_classes, n_layers=3,
+                                           n_heads=[4, 2, 2, 1], feat_drop=0.1, attn_drop=0).to(args.device)
+        FGAI = GATNodeClassifier(in_feats=num_feats, hid_dim=128, n_classes=num_classes, n_layers=3,
+                                 n_heads=[4, 2, 2, 1], feat_drop=0.1, attn_drop=0).to(args.device)
         optimizer_FGAI = optim.Adam(standard_model.parameters(), lr=2e-3, weight_decay=0)
     else:
         standard_model = GATNodeClassifier(in_feats=num_feats, hid_dim=8, n_classes=num_classes,
