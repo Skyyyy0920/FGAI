@@ -7,6 +7,7 @@ from attacker import *
 import torch.optim as optim
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = 'cpu'
 
 
 def get_args():
@@ -32,7 +33,7 @@ def get_args():
 
 if __name__ == '__main__':
     args = get_args()
-    setup_seed(args.seed)  # make the experiment repeatable
+    # setup_seed(args.seed)  # make the experiment repeatable
     print('\n' + '=' * 36 + ' Setup logger ' + '=' * 36)
     for handler in logging.root.handlers[:]:
         logging.root.removeHandler(handler)
@@ -57,13 +58,16 @@ if __name__ == '__main__':
 
     criterion = nn.CrossEntropyLoss()
     if args.dataset == 'ogbn-arxiv':
-        standard_model = GATNodeClassifier(in_feats=num_feats, hid_dim=128, n_classes=num_classes, n_layers=4,
-                                           n_heads=[4, 4, 4, 4, 1], feat_drop=0.4, attn_drop=0.05).to(args.device)
-        optimizer = optim.Adam(standard_model.parameters(), lr=2e-3, weight_decay=0)
+        standard_model = GATNodeClassifier(in_feats=num_feats, hid_dim=256, n_classes=num_classes, n_layers=3,
+                                           n_heads=[4, 2, 2, 1], feat_drop=0.4, attn_drop=0.05).to(args.device)
+        optimizer = optim.Adam(standard_model.parameters(), lr=5e-3, weight_decay=0)
     else:
         standard_model = GATNodeClassifier(in_feats=num_feats, hid_dim=8, n_classes=num_classes, n_layers=1,
                                            n_heads=[8, 1]).to(args.device)
-        optimizer = optim.Adam(standard_model.parameters(), lr=5e-3, weight_decay=5e-4)
+        optimizer = optim.Adam(standard_model.parameters(), lr=1e-3, weight_decay=5e-4)
+
+    total_params = sum(p.numel() for p in standard_model.parameters())
+    print(f"Total parameters: {total_params}")
 
     std_trainer = StandardTrainer(standard_model, criterion, optimizer, args)
 

@@ -95,14 +95,21 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 5. Build models, define overall loss and optimizer
     # ==================================================================================================
-    standard_model = GATNodeClassifier(in_feats=num_feats, hid_dim=8, n_classes=num_classes,
-                                       n_layers=1, n_heads=[8, 1]).to(device=args.device)
-    FGAI = GATNodeClassifier(in_feats=num_feats, hid_dim=8, n_classes=num_classes,
-                             n_layers=1, n_heads=[8, 1]).to(device=args.device)
+    if args.dataset == 'ogbn-arxiv':
+        standard_model = GATNodeClassifier(in_feats=num_feats, hid_dim=256, n_classes=num_classes, n_layers=4,
+                                           n_heads=[4, 4, 4, 4, 1], feat_drop=0.4, attn_drop=0.05).to(args.device)
+        FGAI = GATNodeClassifier(in_feats=num_feats, hid_dim=256, n_classes=num_classes, n_layers=4,
+                                           n_heads=[4, 4, 4, 4, 1], feat_drop=0.4, attn_drop=0.05).to(args.device)
+        optimizer_FGAI = optim.Adam(standard_model.parameters(), lr=2e-3, weight_decay=0)
+    else:
+        standard_model = GATNodeClassifier(in_feats=num_feats, hid_dim=8, n_classes=num_classes,
+                                           n_layers=1, n_heads=[8, 1]).to(device=args.device)
+        FGAI = GATNodeClassifier(in_feats=num_feats, hid_dim=8, n_classes=num_classes,
+                                 n_layers=1, n_heads=[8, 1]).to(device=args.device)
+        optimizer_FGAI = optim.Adam(FGAI.parameters(), lr=1e-2, weight_decay=5e-4)
     PGDer = PGDAttacker(radius=args.pgd_radius, steps=args.pgd_step, step_size=args.pgd_step_size,
                         random_start=True, norm_type=args.pgd_norm_type, ascending=True, device=args.device)
     criterion = nn.CrossEntropyLoss()
-    optimizer_FGAI = optim.Adam(FGAI.parameters(), lr=1e-2, weight_decay=5e-4)
 
     FGAI_trainer = FGAITrainer(FGAI, optimizer_FGAI, PGDer, args)
 

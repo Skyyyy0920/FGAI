@@ -90,8 +90,8 @@ class PGDAttacker:
         self._clip_(adv_feats, feats)
 
         # temporarily shutdown autograd of model to improve PGD efficiency
-        for pp in target_model.parameters():
-            pp.requires_grad = False
+        for p in target_model.parameters():
+            p.requires_grad = False
 
         for step in range(self.steps):
             adv_feats.requires_grad_()
@@ -119,7 +119,7 @@ class PGDAttacker:
                 self._clip_(adv_feats, feats)
 
         # reopen autograd of model after PGD
-        for pp in target_model.parameters():
-            pp.requires_grad = True
+        for p in target_model.parameters():
+            p.requires_grad = True
 
         return adv_feats

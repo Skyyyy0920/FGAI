@@ -81,10 +81,10 @@ class FGAITrainer:
             self.model.eval()
             with torch.no_grad():
                 val_outputs, orig_graph_repr, _ = self.model(g, features)
-                val_pred = torch.argmax(val_outputs[val_mask], dim=1)
-                val_accuracy = accuracy_score(val_label.cpu(), val_pred.cpu())
+                val_pred = torch.argmax(val_outputs[valid_idx], dim=1)
+                val_accuracy = accuracy_score(label[valid_idx].cpu(), val_pred.cpu())
 
             logging.info(f'Epoch [{epoch + 1}/{self.num_epochs}] | Train Loss: {loss.item():.4f} | '
                          f'Val Accuracy: {val_accuracy:.4f}')
 
-            evaluate(self.model, criterion, g, features, test_mask, test_label)
+            evaluate(self.model, criterion, g, features, test_idx, label[test_idx])
