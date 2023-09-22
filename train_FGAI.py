@@ -36,15 +36,15 @@ def get_args():
     # Experimental Setup
     parser.add_argument('--num_epochs', type=int, default=300, help='Training epoch')
 
-    parser.add_argument('--n_inject_max', type=int, default=20)
-    parser.add_argument('--n_edge_max', type=int, default=20)
+    parser.add_argument('--n_inject_max', type=int, default=50)
+    parser.add_argument('--n_edge_max', type=int, default=50)
     parser.add_argument('--epsilon', type=float, default=0.01)
     parser.add_argument('--n_epoch_attack', type=int, default=10)
 
-    parser.add_argument('--lambda_1', type=float, default=5e-2)
-    parser.add_argument('--lambda_2', type=float, default=5e-2)
-    parser.add_argument('--lambda_3', type=float, default=5e-2)
-    parser.add_argument('--K', type=int, default=10)
+    parser.add_argument('--lambda_1', type=float, default=1e-2)
+    parser.add_argument('--lambda_2', type=float, default=1e-2)
+    parser.add_argument('--lambda_3', type=float, default=1e-2)
+    parser.add_argument('--K', type=int, default=500000)
 
     parser.add_argument('--save_path', type=str, default='./checkpoints/', help='Checkpoints saving path')
 
@@ -124,7 +124,7 @@ if __name__ == '__main__':
                                  feat_drop=0.05,
                                  attn_drop=0).to(args.device)
         optimizer_FGAI = optim.Adam(standard_model.parameters(),
-                                    lr=2e-3,
+                                    lr=1e-2,
                                     weight_decay=0)
     else:
         standard_model = GATNodeClassifier(in_feats=num_feats,

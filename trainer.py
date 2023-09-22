@@ -1,5 +1,5 @@
 from utils import *
-import scipy.sparse as sp
+import torch.nn.functional as F
 
 
 class StandardTrainer:
@@ -56,19 +56,21 @@ class FGAITrainer:
 
             # 1. Closeness of Prediction
             closeness_of_prediction_loss = TVD(FGAI_outputs, orig_outputs)
+            # origin_labels = torch.argmax(orig_outputs, dim=1)
+            # closeness_of_prediction_loss = F.nll_loss(FGAI_outputs, origin_labels)
+            # closeness_of_prediction_loss = F.cross_entropy(FGAI_outputs, label)
 
             # 2. Constraint of Stability. Perturb δ(x) to ensure robustness of FGAI
-            # TODO: train_idx????????
-            adj_delta, feats_delta = self.attacker_delta.attack(self.model, adj, features, test_idx, None)
+            adj_delta, feats_delta = self.attacker_delta.attack(self.model, adj, features, train_idx, None)
             new_outputs, new_graph_repr, new_att = self.model(torch.cat((features, feats_delta), dim=0), adj_delta)
             adversarial_loss = TVD(new_outputs[:features.shape[0]], FGAI_outputs)
 
             # 3. Stability of Explanation. Perturb 𝝆(x) to ensure robustness of explanation of FGAI
-            adj_rho, feats_rho = self.attacker_rho.attack(self.model, adj, features, test_idx, None)
+            adj_rho, feats_rho = self.attacker_rho.attack(self.model, adj, features, train_idx, None)
             new_outputs_2, new_graph_repr_2, new_att_2 = self.model(torch.cat((features, feats_rho), dim=0), adj_rho)
             stability_of_explanation_loss = 0
             for i in range(orig_att.shape[1]):
-                stability_of_explanation_loss += topK_overlap_loss(new_att_2[:, i][:features.shape[0]], FGAI_att[:, i],
+                stability_of_explanation_loss += topK_overlap_loss(new_att_2[:, i][:orig_att.shape[0]], FGAI_att[:, i],
                                                                    adj, self.K, 'l1')
 
             # 4. Similarity of Explanation
@@ -86,7 +88,7 @@ class FGAITrainer:
 
             self.model.eval()
             with torch.no_grad():
-                val_outputs, orig_graph_repr, _ = self.model(g, features)
+                val_outputs, orig_graph_repr, _ = self.model(features, adj)
                 val_pred = torch.argmax(val_outputs[valid_idx], dim=1)
                 val_accuracy = accuracy_score(label[valid_idx].cpu(), val_pred.cpu())
 

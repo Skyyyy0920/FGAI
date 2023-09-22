@@ -253,7 +253,7 @@ class PGD(InjectionAttack):
                 pred_loss = self.loss(pred[:n_total][target_mask], origin_labels[target_mask]).to(self.device)
 
             model.zero_grad()
-            pred_loss.backward()
+            pred_loss.backward(retain_graph=True)
             grad = features_attack.grad.data
             features_attack = features_attack.clone() + epsilon * grad.sign()
             features_attack = torch.clamp(features_attack, feat_lim_min, feat_lim_max)

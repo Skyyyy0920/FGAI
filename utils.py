@@ -79,48 +79,75 @@ def topK_overlap_loss(new_att, old_att, adj, K=2, metric='l1'):
     new_att, old_att = new_att.squeeze(), old_att.squeeze()
     src, dst = adj.nonzero()
     src, dst = torch.tensor(src), torch.tensor(dst)
+    unique_values, counts = torch.unique(src, return_counts=True)
+    max_len = counts.max().item()
 
     loss = 0
 
-    for node_id in tqdm(range(adj.shape[0] - 1)):
-        indices = torch.where(src == node_id)[0]
-        if len(indices) < K:
-            continue
-        old_neighbor_att = old_att[indices]  # 1维tensor, 假设邻居节点有n个, 则为(n, )的tensor
-        new_neighbor_att = new_att[indices]
+    idx_1 = torch.argsort(new_att, dim=-1, descending=True)
+    idx_1 = idx_1[:K]
+    old_topK_1 = old_att.gather(-1, idx_1)
+    new_topK_1 = new_att.gather(-1, idx_1)
 
-        idx_1 = torch.argsort(new_neighbor_att, descending=True)
-        idx_1 = idx_1[:K]
-        old_topK_1 = old_neighbor_att.gather(0, idx_1)
-        new_topK_1 = new_neighbor_att.gather(0, idx_1)
+    idx_2 = torch.argsort(old_att, dim=-1, descending=True)
+    idx_2 = idx_2[:K]
+    old_topK_2 = old_att.gather(-1, idx_2)
+    new_topK_2 = new_att.gather(-1, idx_2)
 
-        idx_2 = torch.argsort(old_neighbor_att, descending=True)
-        idx_2 = idx_2[:K]
-        old_topK_2 = old_neighbor_att.gather(0, idx_2)
-        new_topK_2 = new_neighbor_att.gather(0, idx_2)
+    # steps = int((adj.shape[0] - 1) / 500) + 1
+    # for i in tqdm(range(steps)):
+    #     old_neighbor_atts, new_neighbor_atts = [], []
+    #
+    #     start_id = i * 500
+    #     end_id = (i + 1) * 500 if (i + 1) * 500 < adj.shape[0] - 1 else adj.shape[0] - 1
+    #     for node_id in range(start_id, end_id, 1):
+    #         indices = torch.where(src == node_id)[0]
+    #
+    #         old_neighbor_att = old_att[indices]  # 1维tensor, 假设邻居节点有n个, 则为(n, )的tensor
+    #         new_neighbor_att = new_att[indices]
+    #
+    #         padding = torch.zeros(max_len - len(indices)).to(old_neighbor_att.device)
+    #         old_neighbor_att = torch.cat([old_neighbor_att, padding], dim=0)
+    #         new_neighbor_att = torch.cat([new_neighbor_att, padding], dim=0)
+    #
+    #         old_neighbor_atts.append(old_neighbor_att)
+    #         new_neighbor_atts.append(new_neighbor_att)
+    #
+    #     old_neighbor_atts = torch.stack(old_neighbor_atts, dim=0)
+    #     new_neighbor_atts = torch.stack(new_neighbor_atts, dim=0)
+    #
+    #     idx_1 = torch.argsort(new_neighbor_atts, dim=1, descending=True)
+    #     idx_1 = idx_1[:K]
+    #     old_topK_1 = old_neighbor_atts.gather(1, idx_1)
+    #     new_topK_1 = new_neighbor_atts.gather(1, idx_1)
+    #
+    #     idx_2 = torch.argsort(old_neighbor_atts, dim=1, descending=True)
+    #     idx_2 = idx_2[:K]
+    #     old_topK_2 = old_neighbor_atts.gather(1, idx_2)
+    #     new_topK_2 = new_neighbor_atts.gather(1, idx_2)
 
-        if metric == 'l1':
-            loss += (torch.norm(old_topK_1 - new_topK_1, p=1) + torch.norm(new_topK_2 - old_topK_2, p=1)) / (2 * K)
-        elif metric == 'l2':
-            loss += (torch.norm(old_topK_1 - new_topK_1, p=2) + torch.norm(new_topK_2 - old_topK_2, p=2)) / (2 * K)
-        elif metric == "kl-full":
-            loss += kl(new_att, old_att)
-        elif metric == "jsd-full":
-            loss += JSD(new_att, old_att)
-        elif metric == "kl-topk":
-            gt_Topk_1_normed = torch.nn.functional.softmax(new_topK_1, dim=-1)
-            pred_TopK_1_normed = torch.nn.functional.softmax(old_topK_1, dim=-1)
-            gt_TopK_2_normed = torch.nn.functional.softmax(new_topK_2, dim=-1)
-            pred_TopK_2_normed = torch.nn.functional.softmax(old_topK_2, dim=-1)
-            loss += (kl(gt_Topk_1_normed, pred_TopK_1_normed) + kl(gt_TopK_2_normed, pred_TopK_2_normed)) / 2
-        elif metric == "jsd-topk":
-            gt_Topk_1_normed = torch.nn.functional.softmax(new_topK_1, dim=-1)
-            pred_TopK_1_normed = torch.nn.functional.softmax(old_topK_1, dim=-1)
-            gt_TopK_2_normed = torch.nn.functional.softmax(new_topK_2, dim=-1)
-            pred_TopK_2_normed = torch.nn.functional.softmax(old_topK_2, dim=-1)
-            loss += (JSD(gt_Topk_1_normed, pred_TopK_1_normed) + JSD(gt_TopK_2_normed, pred_TopK_2_normed)) / 2
-        else:
-            raise ValueError(f"Unknown metric: {metric}")
+    if metric == 'l1':
+        loss += (torch.norm(old_topK_1 - new_topK_1, p=1) + torch.norm(new_topK_2 - old_topK_2, p=1)) / (2 * K)
+    elif metric == 'l2':
+        loss += (torch.norm(old_topK_1 - new_topK_1, p=2) + torch.norm(new_topK_2 - old_topK_2, p=2)) / (2 * K)
+    elif metric == "kl-full":
+        loss += kl(new_att, old_att)
+    elif metric == "jsd-full":
+        loss += JSD(new_att, old_att)
+    elif metric == "kl-topk":
+        gt_Topk_1_normed = torch.nn.functional.softmax(new_topK_1, dim=-1)
+        pred_TopK_1_normed = torch.nn.functional.softmax(old_topK_1, dim=-1)
+        gt_TopK_2_normed = torch.nn.functional.softmax(new_topK_2, dim=-1)
+        pred_TopK_2_normed = torch.nn.functional.softmax(old_topK_2, dim=-1)
+        loss += (kl(gt_Topk_1_normed, pred_TopK_1_normed) + kl(gt_TopK_2_normed, pred_TopK_2_normed)) / 2
+    elif metric == "jsd-topk":
+        gt_Topk_1_normed = torch.nn.functional.softmax(new_topK_1, dim=-1)
+        pred_TopK_1_normed = torch.nn.functional.softmax(old_topK_1, dim=-1)
+        gt_TopK_2_normed = torch.nn.functional.softmax(new_topK_2, dim=-1)
+        pred_TopK_2_normed = torch.nn.functional.softmax(old_topK_2, dim=-1)
+        loss += (JSD(gt_Topk_1_normed, pred_TopK_1_normed) + JSD(gt_TopK_2_normed, pred_TopK_2_normed)) / 2
+    else:
+        raise ValueError(f"Unknown metric: {metric}")
 
     return loss
 
