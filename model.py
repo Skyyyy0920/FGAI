@@ -1,13 +1,14 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
 import dgl
 import dgl.function as fn
 from dgl.base import DGLError
 from dgl.ops import edge_softmax
 from dgl.utils import expand_as_pair
 from dgl.nn.pytorch.utils import Identity
-import torch
-import torch.nn as nn
-import dgl.nn.pytorch as dglnn
-import torch.nn.functional as F
+
 from utils import k_shell_algorithm
 
 
@@ -151,20 +152,22 @@ class GATNodeClassifier(nn.Module):
         super(GATNodeClassifier, self).__init__()
         self.layers = nn.ModuleList()
         self.layers.append(GATConv(in_feats, hid_dim, n_heads[0], feat_drop, attn_drop, activation=F.elu))
-        for i in range(1, n_layers):
-            in_hid_dim = hid_dim * n_heads[i - 1]
-            self.layers.append(GATConv(in_hid_dim, hid_dim, n_heads[i], feat_drop, attn_drop, activation=F.elu))
-        self.out_layer = nn.Linear(hid_dim * n_heads[-2], n_classes)
+        for i in range(0, n_layers - 1):
+            in_hid_dim = hid_dim * n_heads[i]
+            self.layers.append(GATConv(in_hid_dim, hid_dim, n_heads[i + 1], feat_drop, attn_drop, activation=F.elu))
+        self.out_layer = nn.Linear(hid_dim * n_heads[-1], n_classes)
 
-    def forward(self, g, features):
-        h = features
+    def forward(self, x, adj):
+        g = dgl.from_scipy(adj).to(x.device)
+        g.ndata['features'] = x
+
         for layer in self.layers:
-            h, att = layer(g, h, get_attention=True)
-            h = h.flatten(1)  # use concat to handle multi-head. for mean method, use h = h.mean(1)
-        graph_representation = h.mean(dim=0)
+            x, att = layer(g, x, get_attention=True)
+            x = x.flatten(1)  # use concat to handle multi-head. for mean method, use x = x.mean(1)
+        graph_representation = x.mean(dim=0)
         attention = att
-        h = self.out_layer(h)
-        logits = h
+        x = self.out_layer(x)
+        logits = x
 
         return logits, graph_representation, attention
 

@@ -4,7 +4,8 @@ import torch
 import random
 import logging
 import numpy as np
-from pathlib import Path
+import scipy.sparse as sp
+from tqdm import tqdm
 from sklearn.metrics import accuracy_score, f1_score
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
@@ -74,13 +75,17 @@ def JSD(a, b):
     return loss
 
 
-def topK_overlap_loss(new_att, old_att, g: dgl.DGLGraph, K=2, metric='l1'):
+def topK_overlap_loss(new_att, old_att, adj, K=2, metric='l1'):
     new_att, old_att = new_att.squeeze(), old_att.squeeze()
-    src, dst = g.edges()
+    src, dst = adj.nonzero()
+    src, dst = torch.tensor(src), torch.tensor(dst)
+
     loss = 0
 
-    for node_id in g.nodes():
+    for node_id in tqdm(range(adj.shape[0] - 1)):
         indices = torch.where(src == node_id)[0]
+        if len(indices) < K:
+            continue
         old_neighbor_att = old_att[indices]  # 1维tensor, 假设邻居节点有n个, 则为(n, )的tensor
         new_neighbor_att = new_att[indices]
 
@@ -120,10 +125,10 @@ def topK_overlap_loss(new_att, old_att, g: dgl.DGLGraph, K=2, metric='l1'):
     return loss
 
 
-def evaluate(model, criterion, g, features, label, test_idx):
+def evaluate(model, criterion, features, adj, label, test_idx):
     model.eval()
     with torch.no_grad():
-        test_outputs, graph_rep, _ = model(g, features)
+        test_outputs, graph_rep, _ = model(features, adj)
         test_loss = criterion(test_outputs[test_idx], label[test_idx])
         test_pred = torch.argmax(test_outputs[test_idx], dim=1)
         test_accuracy = accuracy_score(label[test_idx].cpu(), test_pred.cpu())
