@@ -3,8 +3,8 @@ import argparse
 import torch.nn as nn
 import torch.optim as optim
 from utils import *
-from model import GATNodeClassifier, GATGraphClassifier
-from dataset import load_dataset
+from model import GATNodeClassifier
+from load_dataset import load_dataset
 from trainer import StandardTrainer
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -18,10 +18,14 @@ def get_args():
     parser.add_argument('--device', type=str, default=device, help='Running on which device')
 
     # Data
-    parser.add_argument('--task', type=str, default='node-level', help='task')  # default='graph-level'
     parser.add_argument('--dataset',
                         type=str,
-                        default='ogbn-arxiv',
+                        # default='ogbn-arxiv',
+                        # default='ogbn-products',
+                        # default='ogbn-papers100M',
+                        default='cora',
+                        # default='pubmed',
+                        # default='citeseer',
                         help='Dataset name')
 
     # Experimental Setup
@@ -56,7 +60,7 @@ if __name__ == '__main__':
 
     g, label, train_idx, valid_idx, test_idx, num_classes = load_dataset(args)
     features = g.ndata["feat"]
-    num_feats = features.shape[1]
+    in_feats = features.shape[1]
     src, dst = g.edges()
     num_nodes = g.number_of_nodes()
     adj = sp.csr_matrix((np.ones(len(src)), (src.cpu().numpy(), dst.cpu().numpy())), shape=(num_nodes, num_nodes))
@@ -64,7 +68,7 @@ if __name__ == '__main__':
 
     criterion = nn.CrossEntropyLoss()
     if args.dataset == 'ogbn-arxiv':
-        standard_model = GATNodeClassifier(in_feats=num_feats,
+        standard_model = GATNodeClassifier(in_feats=in_feats,
                                            hid_dim=128,
                                            n_classes=num_classes,
                                            n_layers=3,
@@ -75,14 +79,16 @@ if __name__ == '__main__':
                                lr=1e-2,
                                weight_decay=0)
     else:
-        standard_model = GATNodeClassifier(in_feats=num_feats,
-                                           hid_dim=8,
+        standard_model = GATNodeClassifier(in_feats=in_feats,
+                                           hid_dim=128,
                                            n_classes=num_classes,
-                                           n_layers=1,
-                                           n_heads=[8, 1]).to(args.device)
+                                           n_layers=3,
+                                           n_heads=[4, 2, 1],
+                                           feat_drop=0.05,
+                                           attn_drop=0).to(args.device)
         optimizer = optim.Adam(standard_model.parameters(),
-                               lr=1e-3,
-                               weight_decay=5e-4)
+                               lr=1e-2,
+                               weight_decay=0)
 
     total_params = sum(p.numel() for p in standard_model.parameters())
     print(f"Total parameters: {total_params}")

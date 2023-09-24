@@ -5,18 +5,15 @@ import zipfile
 import argparse
 from pathlib import Path
 
-from model import GATNodeClassifier, GATGraphClassifier
+from model import GATNodeClassifier
 from utils import *
 from trainer import FGAITrainer
-from dataset import load_dataset
+from load_dataset import load_dataset
 from attackers import PGD
 import torch.optim as optim
-from grb.attack.fgsm import FGSM
-from grb.attack.tdgia import TDGIA
-from grb.attack.rnd import RND
-from grb.attack.speit import SPEIT
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = 'cpu'
 
 
 def get_args():
@@ -27,10 +24,14 @@ def get_args():
     parser.add_argument('--device', type=str, default=device, help='Running on which device')
 
     # Data
-    parser.add_argument('--task', type=str, default='node-level', help='task')  # default='graph-level'
     parser.add_argument('--dataset',
                         type=str,
                         default='ogbn-arxiv',
+                        # default='ogbn-products',
+                        # default='ogbn-papers100M',
+                        # default='cora',
+                        # default='pubmed',
+                        # default='citeseer',
                         help='Dataset name')
 
     # Experimental Setup
@@ -98,7 +99,7 @@ if __name__ == '__main__':
     # ==================================================================================================
     g, label, train_idx, valid_idx, test_idx, num_classes = load_dataset(args)
     features = g.ndata["feat"]
-    num_feats = features.shape[1]
+    in_feats = features.shape[1]
     src, dst = g.edges()
     num_nodes = g.number_of_nodes()
     adj = sp.csr_matrix((np.ones(len(src)), (src.cpu().numpy(), dst.cpu().numpy())), shape=(num_nodes, num_nodes))
@@ -109,37 +110,41 @@ if __name__ == '__main__':
     # 5. Build models, define overall loss and optimizer
     # ==================================================================================================
     if args.dataset == 'ogbn-arxiv':
-        standard_model = GATNodeClassifier(in_feats=num_feats,
+        standard_model = GATNodeClassifier(in_feats=in_feats,
                                            hid_dim=128,
                                            n_classes=num_classes,
                                            n_layers=3,
                                            n_heads=[4, 2, 1],
                                            feat_drop=0.05,
                                            attn_drop=0).to(args.device)
-        FGAI = GATNodeClassifier(in_feats=num_feats,
+        FGAI = GATNodeClassifier(in_feats=in_feats,
                                  hid_dim=128,
                                  n_classes=num_classes,
                                  n_layers=3,
                                  n_heads=[4, 2, 1],
                                  feat_drop=0.05,
                                  attn_drop=0).to(args.device)
-        optimizer_FGAI = optim.Adam(standard_model.parameters(),
+        optimizer_FGAI = optim.Adam(FGAI.parameters(),
                                     lr=1e-2,
                                     weight_decay=0)
     else:
-        standard_model = GATNodeClassifier(in_feats=num_feats,
-                                           hid_dim=8,
+        standard_model = GATNodeClassifier(in_feats=in_feats,
+                                           hid_dim=128,
                                            n_classes=num_classes,
-                                           n_layers=1,
-                                           n_heads=[8, 1]).to(device=args.device)
-        FGAI = GATNodeClassifier(in_feats=num_feats,
-                                 hid_dim=8,
+                                           n_layers=3,
+                                           n_heads=[4, 2, 1],
+                                           feat_drop=0.05,
+                                           attn_drop=0).to(args.device)
+        FGAI = GATNodeClassifier(in_feats=in_feats,
+                                 hid_dim=128,
                                  n_classes=num_classes,
-                                 n_layers=1,
-                                 n_heads=[8, 1]).to(device=args.device)
+                                 n_layers=3,
+                                 n_heads=[4, 2, 1],
+                                 feat_drop=0.05,
+                                 attn_drop=0).to(args.device)
         optimizer_FGAI = optim.Adam(FGAI.parameters(),
                                     lr=1e-2,
-                                    weight_decay=5e-4)
+                                    weight_decay=0)
     attacker_delta = PGD(epsilon=args.epsilon,
                          n_epoch=args.n_epoch_attack,
                          n_inject_max=args.n_inject_max,
@@ -183,4 +188,4 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 7. Save FGAI
     # ==================================================================================================
-    torch.save(FGAI.state_dict(), 'FGAI_parameters.pth')
+    torch.save(FGAI.state_dict(), f'{save_dir}/FGAI_parameters.pth')

@@ -27,6 +27,17 @@ def setup_seed(seed):
     torch.cuda.manual_seed_all(seed)
 
 
+def get_idx_split(dataset_len):
+    idx = list(range(dataset_len))
+    random.shuffle(idx)
+
+    split_point_1 = int(dataset_len * 0.6)
+    split_point_2 = int(dataset_len * 0.8)
+
+    split_idx = {'train': idx[:split_point_1], 'valid': idx[split_point_1:split_point_2], 'test': idx[split_point_2:]}
+    return split_idx
+
+
 def compute_node_degrees(adj_matrix):
     # Calculate node degrees by summing the rows of the adjacency matrix
     node_degrees = np.sum(adj_matrix.detach().cpu().numpy(), axis=1)

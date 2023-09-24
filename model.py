@@ -148,7 +148,7 @@ class GATConv(nn.Module):
 
 
 class GATNodeClassifier(nn.Module):
-    def __init__(self, in_feats, hid_dim, n_classes, n_layers, n_heads, feat_drop=0.4, attn_drop=0.05):
+    def __init__(self, in_feats, hid_dim, n_classes, n_layers, n_heads, feat_drop, attn_drop):
         super(GATNodeClassifier, self).__init__()
         self.layers = nn.ModuleList()
         self.layers.append(GATConv(in_feats, hid_dim, n_heads[0], feat_drop, attn_drop, activation=F.elu))
@@ -165,39 +165,40 @@ class GATNodeClassifier(nn.Module):
             x, att = layer(g, x, get_attention=True)
             x = x.flatten(1)  # use concat to handle multi-head. for mean method, use x = x.mean(1)
         graph_representation = x.mean(dim=0)
-        attention = att
         x = self.out_layer(x)
         logits = x
 
-        return logits, graph_representation, attention
+        return logits, graph_representation, att
 
 
 class GATGraphClassifier(nn.Module):
-    def __init__(self, in_feats, hid_dim, n_classes, n_layers, n_heads, readout_type='top-K'):
+    def __init__(self, in_feats, hid_dim, n_classes, n_layers, n_heads, feat_drop, attn_drop, readout_type='top-K'):
         super(GATGraphClassifier, self).__init__()
         self.readout_type = readout_type
 
         self.layers = nn.ModuleList()
-        self.layers.append(GATConv(in_feats, hid_dim, n_heads[0], 0.6, 0.6, activation=F.elu))
+        self.layers.append(GATConv(in_feats, hid_dim, n_heads[0], feat_drop, attn_drop, activation=F.elu))
+        for i in range(0, n_layers - 1):
+            in_hid_dim = hid_dim * n_heads[i]
+            self.layers.append(GATConv(in_hid_dim, hid_dim, n_heads[i + 1], feat_drop, attn_drop, activation=F.elu))
+        self.out_layer = nn.Linear(hid_dim * n_heads[-1], n_classes)
 
-        for i in range(1, n_layers):
-            self.layers.append(GATConv(hid_dim * n_heads[i - 1], hid_dim, n_heads[i], 0.6, 0.6, activation=F.elu))
-        self.out_layer = GATConv(hid_dim * n_heads[-2], n_classes, n_heads[-1], 0.6, 0.6, activation=None)
+    def forward(self, x, adj):
+        g = dgl.from_scipy(adj).to(x.device)
+        g.ndata['features'] = x
 
-    def forward(self, g, features):
-        h = features
         for layer in self.layers:
-            h, att = layer(g, h, get_attention=True)
-            h = h.flatten(1)  # use concat to handle multi-head. for mean method, use h = h.mean(1)
+            x, att = layer(g, x, get_attention=True)
+            x = x.flatten(1)  # use concat to handle multi-head. for mean method, use h = h.mean(1)
         attention = att
-        h, att = self.out_layer(g, h, get_attention=True)
+        x, att = self.out_layer(g, x, get_attention=True)
 
         if self.readout_type == 'top-K':
             k_values = torch.tensor(k_shell_algorithm(adj), dtype=torch.float32)
             k_values /= k_values.sum()
-            graph_representation = torch.matmul(k_values, h).unsqueeze(0)
+            graph_representation = torch.matmul(k_values, x).unsqueeze(0)
         elif self.readout_type == 'mean':
-            graph_representation = h.mean(dim=0).unsqueeze(0)  # 1 * n_classes
+            graph_representation = x.mean(dim=0).unsqueeze(0)  # 1 * n_classes
         else:
             raise ValueError(f"Unknown readout type: {self.readout_type}")
 
