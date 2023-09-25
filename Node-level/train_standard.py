@@ -4,7 +4,7 @@ import scipy.sparse as sp
 import torch.nn as nn
 import torch.optim as optim
 from utils import *
-from model import GATNodeClassifier
+from models import GATNodeClassifier
 from load_dataset import load_dataset
 from trainer import StandardTrainer
 

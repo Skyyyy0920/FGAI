@@ -5,7 +5,7 @@ import zipfile
 import argparse
 from pathlib import Path
 
-from model import GATGraphClassifier
+from models import GATGraphClassifier
 from utils import *
 from trainer import FGAITrainer
 from load_dataset import load_dataset
@@ -96,51 +96,48 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 4. Prepare data
     # ==================================================================================================
-    train_loader, valid_loader, test_loader = load_dataset(args)
-    features = g.ndata["feat"]
-    num_feats = features.shape[1]
-    src, dst = g.edges()
-    num_nodes = g.number_of_nodes()
-    adj = sp.csr_matrix((np.ones(len(src)), (src.cpu().numpy(), dst.cpu().numpy())), shape=(num_nodes, num_nodes))
-    del g
-    logging.info(f"num_nodes: {num_nodes}")
+    train_loader, valid_loader, test_loader, in_feats, num_classes = load_dataset(args)
 
     # ==================================================================================================
     # 5. Build models, define overall loss and optimizer
     # ==================================================================================================
-    if args.dataset == 'ogbn-arxiv':
-        standard_model = GATGraphClassifier(in_feats=num_feats,
+    if args.dataset == 'ogbg-ppa':
+        standard_model = GATGraphClassifier(in_feats=in_feats,
                                             hid_dim=128,
                                             n_classes=num_classes,
                                             n_layers=3,
                                             n_heads=[4, 2, 1],
-                                            feat_drop=0.05,
-                                            attn_drop=0).to(args.device)
-        FGAI = GATGraphClassifier(in_feats=num_feats,
+                                            feat_drop=0.2,
+                                            attn_drop=0.05,
+                                            readout_type=args.readout_type).to(args.device)
+        FGAI = GATGraphClassifier(in_feats=in_feats,
                                   hid_dim=128,
                                   n_classes=num_classes,
                                   n_layers=3,
                                   n_heads=[4, 2, 1],
-                                  feat_drop=0.05,
-                                  attn_drop=0).to(args.device)
+                                  feat_drop=0.2,
+                                  attn_drop=0.05,
+                                  readout_type=args.readout_type).to(args.device)
         optimizer_FGAI = optim.Adam(FGAI.parameters(),
                                     lr=1e-2,
                                     weight_decay=0)
     else:
-        standard_model = GATGraphClassifier(in_feats=num_feats,
+        standard_model = GATGraphClassifier(in_feats=in_feats,
                                             hid_dim=128,
                                             n_classes=num_classes,
                                             n_layers=3,
                                             n_heads=[4, 2, 1],
-                                            feat_drop=0.05,
-                                            attn_drop=0).to(args.device)
-        FGAI = GATGraphClassifier(in_feats=num_feats,
+                                            feat_drop=0.2,
+                                            attn_drop=0.05,
+                                            readout_type=args.readout_type).to(args.device)
+        FGAI = GATGraphClassifier(in_feats=in_feats,
                                   hid_dim=128,
                                   n_classes=num_classes,
                                   n_layers=3,
                                   n_heads=[4, 2, 1],
-                                  feat_drop=0.05,
-                                  attn_drop=0).to(args.device)
+                                  feat_drop=0.2,
+                                  attn_drop=0.05,
+                                  readout_type=args.readout_type).to(args.device)
         optimizer_FGAI = optim.Adam(FGAI.parameters(),
                                     lr=1e-2,
                                     weight_decay=5e-4)
@@ -148,16 +145,16 @@ if __name__ == '__main__':
                          n_epoch=args.n_epoch_attack,
                          n_inject_max=args.n_inject_max,
                          n_edge_max=args.n_edge_max,
-                         feat_lim_min=features.min().item(),
-                         feat_lim_max=features.max().item(),
+                         feat_lim_min=-1,
+                         feat_lim_max=1,
                          # loss=TVD,
                          device=args.device)
     attacker_rho = PGD(epsilon=args.epsilon,
                        n_epoch=args.n_epoch_attack,
                        n_inject_max=args.n_inject_max,
                        n_edge_max=args.n_edge_max,
-                       feat_lim_min=features.min().item(),
-                       feat_lim_max=features.max().item(),
+                       feat_lim_min=-1,
+                       feat_lim_max=1,
                        loss=topK_overlap_loss,
                        device=args.device)
     criterion = nn.CrossEntropyLoss()
@@ -175,14 +172,13 @@ if __name__ == '__main__':
     orig_graph_repr = tensor_dict['orig_graph_repr'].to(device=args.device)
     orig_att = tensor_dict['orig_att'].to(device=args.device)
 
-    evaluate_node_level(standard_model, criterion, features, adj, label, test_idx)
+    evaluate_graph_level(standard_model, criterion, test_loader, args.device)
 
     # ==================================================================================================
     # 7. Train our FGAI
     # ==================================================================================================
-    idx_split = train_idx, valid_idx, test_idx
-    FGAI_trainer.train(features, adj, label, idx_split, orig_outputs, orig_graph_repr, orig_att)
-    evaluate_node_level(FGAI, criterion, features, adj, label, test_idx)
+    FGAI_trainer.train(train_loader, valid_loader, orig_outputs, orig_graph_repr, orig_att)
+    evaluate_graph_level(FGAI, criterion, test_loader, args.device)
 
     # ==================================================================================================
     # 7. Save FGAI

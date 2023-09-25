@@ -5,7 +5,7 @@ import zipfile
 import argparse
 from pathlib import Path
 
-from model import GATNodeClassifier
+from models import GATNodeClassifier
 from utils import *
 from trainer import FGAITrainer
 from load_dataset import load_dataset

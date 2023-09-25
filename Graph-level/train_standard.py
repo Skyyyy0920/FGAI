@@ -3,7 +3,7 @@ import argparse
 import torch.nn as nn
 import torch.optim as optim
 from utils import *
-from model import GATGraphClassifier
+from models import GATGraphClassifier
 from load_dataset import load_dataset
 from trainer import StandardTrainer
 
@@ -30,7 +30,7 @@ def get_args():
 
     # Experimental Setup
     parser.add_argument('--num_epochs', type=int, default=200, help='Training epoch')
-    parser.add_argument('--batch_size', type=int, default=16)
+    parser.add_argument('--batch_size', type=int, default=8)
     parser.add_argument('--readout_type', type=str, default='mean')
 
     args = parser.parse_args()
@@ -81,12 +81,12 @@ if __name__ == '__main__':
                                             n_classes=num_classes,
                                             n_layers=3,
                                             n_heads=[4, 2, 1],
-                                            feat_drop=0,
-                                            attn_drop=0,
+                                            feat_drop=0.2,
+                                            attn_drop=0.2,
                                             readout_type=args.readout_type).to(args.device)
         optimizer = optim.Adam(standard_model.parameters(),
                                lr=1e-2,
-                               weight_decay=0)
+                               weight_decay=5e-4)
 
     total_params = sum(p.numel() for p in standard_model.parameters())
     logging.info(f"Total parameters: {total_params}")

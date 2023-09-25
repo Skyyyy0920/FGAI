@@ -58,7 +58,6 @@ class FGAITrainer:
             closeness_of_prediction_loss = TVD(FGAI_outputs, orig_outputs)
             # origin_labels = torch.argmax(orig_outputs, dim=1)
             # closeness_of_prediction_loss = F.nll_loss(FGAI_outputs, origin_labels)
-            # closeness_of_prediction_loss = F.cross_entropy(FGAI_outputs, label)
 
             # 2. Constraint of Stability. Perturb δ(x) to ensure robustness of FGAI
             adj_delta, feats_delta = self.attacker_delta.attack(self.model, adj, features, train_idx, None)
