@@ -1,14 +1,14 @@
+import numpy as np
+import scipy.sparse as sp
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 import dgl
 import dgl.function as fn
 from dgl.base import DGLError
 from dgl.ops import edge_softmax
 from dgl.utils import expand_as_pair
 from dgl.nn.pytorch.utils import Identity
-
 from utils import k_shell_algorithm
 
 
@@ -172,7 +172,7 @@ class GATNodeClassifier(nn.Module):
 
 
 class GATGraphClassifier(nn.Module):
-    def __init__(self, in_feats, hid_dim, n_classes, n_layers, n_heads, feat_drop, attn_drop, readout_type='top-K'):
+    def __init__(self, in_feats, hid_dim, n_classes, n_layers, n_heads, feat_drop, attn_drop, readout_type='K-shell'):
         super(GATGraphClassifier, self).__init__()
         self.readout_type = readout_type
 
@@ -183,26 +183,33 @@ class GATGraphClassifier(nn.Module):
             self.layers.append(GATConv(in_hid_dim, hid_dim, n_heads[i + 1], feat_drop, attn_drop, activation=F.elu))
         self.out_layer = nn.Linear(hid_dim * n_heads[-1], n_classes)
 
-    def forward(self, x, adj):
-        g = dgl.from_scipy(adj).to(x.device)
-        g.ndata['features'] = x
-
+    def forward(self, x, g):
         for layer in self.layers:
             x, att = layer(g, x, get_attention=True)
             x = x.flatten(1)  # use concat to handle multi-head. for mean method, use h = h.mean(1)
         attention = att
-        x, att = self.out_layer(g, x, get_attention=True)
+        x = self.out_layer(x)
+        g.ndata['h'] = x
 
-        if self.readout_type == 'top-K':
+        if self.readout_type == 'K-shell':
+            src, dst = g.edges()
+            num_nodes = g.number_of_nodes()
+            adj = sp.csr_matrix((np.ones(len(src)), (src.cpu().numpy(), dst.cpu().numpy())),
+                                shape=(num_nodes, num_nodes))
             k_values = torch.tensor(k_shell_algorithm(adj), dtype=torch.float32)
             k_values /= k_values.sum()
-            graph_representation = torch.matmul(k_values, x).unsqueeze(0)
+            g.ndata['w'] = k_values
+            graph_representation = dgl.readout_nodes(g, 'h', weight='w')
         elif self.readout_type == 'mean':
-            graph_representation = x.mean(dim=0).unsqueeze(0)  # 1 * n_classes
+            graph_representation = dgl.readout_nodes(g, 'h', op='mean')
+        elif self.readout_type == 'max':
+            graph_representation = dgl.readout_nodes(g, 'h', op='max')
+        elif self.readout_type == 'min':
+            graph_representation = dgl.readout_nodes(g, 'h', op='min')
         else:
             raise ValueError(f"Unknown readout type: {self.readout_type}")
 
-        return graph_representation, attention
+        return graph_representation, graph_representation, attention
 
 
 class MultiTaskLoss(nn.Module):

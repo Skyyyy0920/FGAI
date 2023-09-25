@@ -8,7 +8,6 @@ from load_dataset import load_dataset
 from trainer import StandardTrainer
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-device = 'cpu'
 
 
 def get_args():
@@ -24,10 +23,15 @@ def get_args():
                         # default='ogbg-ppa',
                         # default='ogbg-molhiv',
                         default='MUTAG',
+                        # default='PROTEINS',
+                        # default='IMDBBINARY',
+                        # default='IMDBMULTI',
                         help='Dataset name')
 
     # Experimental Setup
-    parser.add_argument('--num_epochs', type=int, default=300, help='Training epoch')
+    parser.add_argument('--num_epochs', type=int, default=200, help='Training epoch')
+    parser.add_argument('--batch_size', type=int, default=16)
+    parser.add_argument('--readout_type', type=str, default='mean')
 
     args = parser.parse_args()
     return args
@@ -65,31 +69,33 @@ if __name__ == '__main__':
                                             n_classes=num_classes,
                                             n_layers=3,
                                             n_heads=[4, 2, 1],
-                                            feat_drop=0.05,
-                                            attn_drop=0).to(args.device)
+                                            feat_drop=0.2,
+                                            attn_drop=0.05,
+                                            readout_type=args.readout_type).to(args.device)
         optimizer = optim.Adam(standard_model.parameters(),
-                               lr=1e-2,
+                               lr=1e-4,
                                weight_decay=0)
     else:
         standard_model = GATGraphClassifier(in_feats=in_feats,
-                                            hid_dim=128,
+                                            hid_dim=64,
                                             n_classes=num_classes,
                                             n_layers=3,
                                             n_heads=[4, 2, 1],
-                                            feat_drop=0.05,
-                                            attn_drop=0).to(args.device)
+                                            feat_drop=0,
+                                            attn_drop=0,
+                                            readout_type=args.readout_type).to(args.device)
         optimizer = optim.Adam(standard_model.parameters(),
                                lr=1e-2,
                                weight_decay=0)
 
     total_params = sum(p.numel() for p in standard_model.parameters())
-    print(f"Total parameters: {total_params}")
+    logging.info(f"Total parameters: {total_params}")
 
     std_trainer = StandardTrainer(standard_model, criterion, optimizer, args)
 
     orig_outputs, orig_graph_repr, orig_att = std_trainer.train(train_loader, valid_loader)
 
-    evaluate(standard_model, criterion, features, adj, label, test_idx)
+    evaluate_graph_level(standard_model, criterion, test_loader, args.device)
 
     torch.save(standard_model.state_dict(), os.path.join(save_dir, 'model_parameters.pth'))
     tensor_dict = {'orig_outputs': orig_outputs, 'orig_graph_repr': orig_graph_repr, 'orig_att': orig_att}

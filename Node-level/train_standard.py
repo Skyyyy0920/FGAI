@@ -1,5 +1,6 @@
 import time
 import argparse
+import scipy.sparse as sp
 import torch.nn as nn
 import torch.optim as optim
 from utils import *
@@ -97,7 +98,7 @@ if __name__ == '__main__':
 
     orig_outputs, orig_graph_repr, orig_att = std_trainer.train(features, adj, label, train_idx, valid_idx)
 
-    evaluate(standard_model, criterion, features, adj, label, test_idx)
+    evaluate_node_level(standard_model, criterion, features, adj, label, test_idx)
 
     torch.save(standard_model.state_dict(), os.path.join(save_dir, 'model_parameters.pth'))
     tensor_dict = {'orig_outputs': orig_outputs, 'orig_graph_repr': orig_graph_repr, 'orig_att': orig_att}

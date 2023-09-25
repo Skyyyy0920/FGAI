@@ -1,13 +1,5 @@
-from utils import *
-import torch.nn.functional as F
-
-from model import *
-from utils import *
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from dgl.dataloading import GraphDataLoader
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
+from utils import *
 
 
 class StandardTrainer:
@@ -24,24 +16,32 @@ class StandardTrainer:
         for epoch in range(self.num_epochs):
             loss_list = []
             for batched_graph, labels in train_loader:
-                feats = batched_graph.ndata['attr']
-                logits = self.model(feats, batched_graph.adjacency_matrix().to_dense())
-                loss = F.cross_entropy(logits, labels)
+                labels = labels.to(self.device)
+                feats = batched_graph.ndata['attr'].to(self.device)
+
+                logits, _, _ = self.model(feats, batched_graph.to(self.device))
+                loss = self.criterion(logits, labels)
+                loss_list.append(loss.item())
+
                 self.optimizer.zero_grad()
                 loss.backward()
                 self.optimizer.step()
-                loss_list.append(loss.item())
-            print(f"Epoch {epoch + 1}/{self.num_epochs}, Loss: {np.mean(loss_list):.4f}")
+
+            logging.info(f"Epoch {epoch + 1}/{self.num_epochs}, Train Loss: {np.mean(loss_list):.4f}")
 
             self.model.eval()
             with torch.no_grad():
+                loss_list = []
                 pred_list, label_list = [], []
                 for batched_graph, labels in valid_loader:
-                    feats = batched_graph.ndata['attr']
-                    logits = self.model(feats, batched_graph.adjacency_matrix().to_dense())
+                    labels = labels.to(self.device)
+                    feats = batched_graph.ndata['attr'].to(self.device)
+
+                    logits, _, _ = self.model(feats, batched_graph.to(self.device))
+                    loss = self.criterion(logits, labels)
+                    loss_list.append(loss.item())
+
                     predicted = logits.argmax(dim=1)
-                    accuracy = (predicted == labels).float().mean().item()
-                    print(predicted, labels)
                     pred_list = pred_list + predicted.tolist()
                     label_list = label_list + labels.tolist()
 
@@ -50,13 +50,8 @@ class StandardTrainer:
                 recall = recall_score(label_list, pred_list)
                 f1 = f1_score(label_list, pred_list)
 
-                print("Accuracy:", accuracy)
-                print("Precision:", precision)
-                print("Recall:", recall)
-                print("F1 Score:", f1)
-
-            logging.info(f'Epoch [{epoch + 1}/{self.num_epochs}] | Train Loss: {loss.item():.4f} | '
-                         f'Val Loss: {val_loss.item():.4f} | Val Accuracy: {val_accuracy:.4f}')
+            logging.info(f'Val Loss: {np.mean(loss_list):.4f} | Accuracy: {accuracy:.4f} | Precision: {precision:.4f}'
+                         f' | Recall: {recall:.4f} | F1: {f1:.4f}')
 
         return original_outputs, original_graph_repr, original_att
 

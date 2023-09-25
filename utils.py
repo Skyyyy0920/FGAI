@@ -1,12 +1,8 @@
 import os
-import dgl
 import torch
 import random
 import logging
-import numpy as np
-import scipy.sparse as sp
-from tqdm import tqdm
-from sklearn.metrics import accuracy_score, f1_score
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
@@ -65,6 +61,44 @@ def k_shell_algorithm(adj_matrix):
     return k_values
 
 
+import numpy as np
+import scipy.sparse as sp
+
+
+def compute_node_degrees(adj_matrix):
+    # Calculate node degrees by summing the rows of the adjacency matrix
+    node_degrees = np.array(adj_matrix.sum(axis=1)).flatten()
+    return node_degrees
+
+
+def k_shell_algorithm(adj_matrix):
+    degrees = compute_node_degrees(adj_matrix)
+    k_values = np.zeros(len(degrees), dtype=int)
+    remaining_nodes = np.arange(len(degrees))
+
+    k = 1
+    while len(remaining_nodes) > 0:
+        nodes_to_remove = np.intersect1d(
+            remaining_nodes[degrees[remaining_nodes] <= k],
+            remaining_nodes[degrees[remaining_nodes] >= 0]
+        )
+
+        if len(nodes_to_remove) > 0:
+            k_values[nodes_to_remove] = k
+            degrees[nodes_to_remove] = -1  # Mark nodes as processed
+
+            for node_id in nodes_to_remove:
+                neighbors = adj_matrix[node_id].indices
+                degrees[neighbors] -= 1
+
+            remaining_nodes = np.setdiff1d(remaining_nodes, nodes_to_remove)
+
+        if all(x < 0 or x > k for x in degrees):
+            k += 1
+
+    return k_values
+
+
 def TVD_numpy(predictions, targets):  # accepts two numpy arrays of dimension: (num. instances, )
     return (0.5 * np.abs(predictions - targets)).sum()
 
@@ -90,8 +124,6 @@ def topK_overlap_loss(new_att, old_att, adj, K=2, metric='l1'):
     new_att, old_att = new_att.squeeze(), old_att.squeeze()
     src, dst = adj.nonzero()
     src, dst = torch.tensor(src), torch.tensor(dst)
-    unique_values, counts = torch.unique(src, return_counts=True)
-    max_len = counts.max().item()
 
     loss = 0
 
@@ -104,38 +136,6 @@ def topK_overlap_loss(new_att, old_att, adj, K=2, metric='l1'):
     idx_2 = idx_2[:K]
     old_topK_2 = old_att.gather(-1, idx_2)
     new_topK_2 = new_att.gather(-1, idx_2)
-
-    # steps = int((adj.shape[0] - 1) / 500) + 1
-    # for i in tqdm(range(steps)):
-    #     old_neighbor_atts, new_neighbor_atts = [], []
-    #
-    #     start_id = i * 500
-    #     end_id = (i + 1) * 500 if (i + 1) * 500 < adj.shape[0] - 1 else adj.shape[0] - 1
-    #     for node_id in range(start_id, end_id, 1):
-    #         indices = torch.where(src == node_id)[0]
-    #
-    #         old_neighbor_att = old_att[indices]  # 1维tensor, 假设邻居节点有n个, 则为(n, )的tensor
-    #         new_neighbor_att = new_att[indices]
-    #
-    #         padding = torch.zeros(max_len - len(indices)).to(old_neighbor_att.device)
-    #         old_neighbor_att = torch.cat([old_neighbor_att, padding], dim=0)
-    #         new_neighbor_att = torch.cat([new_neighbor_att, padding], dim=0)
-    #
-    #         old_neighbor_atts.append(old_neighbor_att)
-    #         new_neighbor_atts.append(new_neighbor_att)
-    #
-    #     old_neighbor_atts = torch.stack(old_neighbor_atts, dim=0)
-    #     new_neighbor_atts = torch.stack(new_neighbor_atts, dim=0)
-    #
-    #     idx_1 = torch.argsort(new_neighbor_atts, dim=1, descending=True)
-    #     idx_1 = idx_1[:K]
-    #     old_topK_1 = old_neighbor_atts.gather(1, idx_1)
-    #     new_topK_1 = new_neighbor_atts.gather(1, idx_1)
-    #
-    #     idx_2 = torch.argsort(old_neighbor_atts, dim=1, descending=True)
-    #     idx_2 = idx_2[:K]
-    #     old_topK_2 = old_neighbor_atts.gather(1, idx_2)
-    #     new_topK_2 = new_neighbor_atts.gather(1, idx_2)
 
     if metric == 'l1':
         loss += (torch.norm(old_topK_1 - new_topK_1, p=1) + torch.norm(new_topK_2 - old_topK_2, p=1)) / (2 * K)
@@ -163,7 +163,7 @@ def topK_overlap_loss(new_att, old_att, adj, K=2, metric='l1'):
     return loss
 
 
-def evaluate(model, criterion, features, adj, label, test_idx):
+def evaluate_node_level(model, criterion, features, adj, label, test_idx):
     model.eval()
     with torch.no_grad():
         test_outputs, graph_rep, _ = model(features, adj)
@@ -173,4 +173,30 @@ def evaluate(model, criterion, features, adj, label, test_idx):
         test_f1_score = f1_score(label[test_idx].cpu(), test_pred.cpu(), average='micro')
 
     logging.info(
-        f'Test Loss: {test_loss.item():.4f} | Test Accuracy: {test_accuracy:.4f} | Test F1 Score: {test_f1_score:.4f}')
+        f'Test Loss: {test_loss.item():.4f} | Accuracy: {test_accuracy:.4f} | F1 Score: {test_f1_score:.4f}')
+
+
+def evaluate_graph_level(model, criterion, test_loader, device):
+    model.eval()
+    with torch.no_grad():
+        loss_list = []
+        pred_list, label_list = [], []
+        for batched_graph, labels in test_loader:
+            labels = labels.to(device)
+            feats = batched_graph.ndata['attr'].to(device)
+
+            logits, _, _ = model(feats, batched_graph.to(device))
+            loss = criterion(logits, labels)
+            loss_list.append(loss.item())
+
+            predicted = logits.argmax(dim=1)
+            pred_list = pred_list + predicted.tolist()
+            label_list = label_list + labels.tolist()
+
+        accuracy = accuracy_score(label_list, pred_list)
+        precision = precision_score(label_list, pred_list)
+        recall = recall_score(label_list, pred_list)
+        f1 = f1_score(label_list, pred_list)
+
+    logging.info(f'Test Loss: {np.mean(loss_list):.4f} | Accuracy: {accuracy:.4f} | Precision: {precision:.4f}'
+                 f' | Recall: {recall:.4f} | F1: {f1:.4f}')

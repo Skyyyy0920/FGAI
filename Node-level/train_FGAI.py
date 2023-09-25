@@ -176,14 +176,14 @@ if __name__ == '__main__':
     orig_graph_repr = tensor_dict['orig_graph_repr'].to(device=args.device)
     orig_att = tensor_dict['orig_att'].to(device=args.device)
 
-    evaluate(standard_model, criterion, features, adj, label, test_idx)
+    evaluate_node_level(standard_model, criterion, features, adj, label, test_idx)
 
     # ==================================================================================================
     # 7. Train our FGAI
     # ==================================================================================================
     idx_split = train_idx, valid_idx, test_idx
     FGAI_trainer.train(features, adj, label, idx_split, orig_outputs, orig_graph_repr, orig_att)
-    evaluate(FGAI, criterion, features, adj, label, test_idx)
+    evaluate_node_level(FGAI, criterion, features, adj, label, test_idx)
 
     # ==================================================================================================
     # 7. Save FGAI

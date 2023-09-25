@@ -123,7 +123,7 @@ if __name__ == '__main__':
                                   n_heads=[4, 2, 1],
                                   feat_drop=0.05,
                                   attn_drop=0).to(args.device)
-        optimizer_FGAI = optim.Adam(standard_model.parameters(),
+        optimizer_FGAI = optim.Adam(FGAI.parameters(),
                                     lr=1e-2,
                                     weight_decay=0)
     else:
@@ -175,14 +175,14 @@ if __name__ == '__main__':
     orig_graph_repr = tensor_dict['orig_graph_repr'].to(device=args.device)
     orig_att = tensor_dict['orig_att'].to(device=args.device)
 
-    evaluate(standard_model, criterion, features, adj, label, test_idx)
+    evaluate_node_level(standard_model, criterion, features, adj, label, test_idx)
 
     # ==================================================================================================
     # 7. Train our FGAI
     # ==================================================================================================
     idx_split = train_idx, valid_idx, test_idx
     FGAI_trainer.train(features, adj, label, idx_split, orig_outputs, orig_graph_repr, orig_att)
-    evaluate(FGAI, criterion, features, adj, label, test_idx)
+    evaluate_node_level(FGAI, criterion, features, adj, label, test_idx)
 
     # ==================================================================================================
     # 7. Save FGAI
