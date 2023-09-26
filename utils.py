@@ -2,6 +2,8 @@ import os
 import torch
 import random
 import logging
+import numpy as np
+import scipy.sparse as sp
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
@@ -34,69 +36,37 @@ def get_idx_split(dataset_len):
     return split_idx
 
 
-def compute_node_degrees(adj_matrix):
-    # Calculate node degrees by summing the rows of the adjacency matrix
-    node_degrees = np.sum(adj_matrix.detach().cpu().numpy(), axis=1)
-    return node_degrees
-
-
 def k_shell_algorithm(adj_matrix):
-    degrees = compute_node_degrees(adj_matrix)
-    k_values = np.zeros(len(degrees), dtype=int)
-    remaining_nodes = np.arange(len(degrees))
+    flag = 1
+    if isinstance(adj_matrix, torch.Tensor):
+        node_degrees = np.sum(adj_matrix.detach().cpu().numpy(), axis=1)
+    elif isinstance(adj_matrix, sp.csr_matrix):
+        node_degrees = np.array(adj_matrix.sum(axis=1)).squeeze()
+        flag = 0
+    else:
+        raise ValueError(f"Unknown adj type: {type(adj_matrix)}")
+    k_values = np.zeros(len(node_degrees), dtype=int)
+    remaining_nodes = np.arange(len(node_degrees))
 
     k = 1
     while len(remaining_nodes) > 0:
-        nodes_to_remove = np.intersect1d(remaining_nodes[degrees[remaining_nodes] <= k],
-                                         remaining_nodes[degrees[remaining_nodes] >= 0])
+        nodes_to_remove = np.intersect1d(remaining_nodes[node_degrees[remaining_nodes] <= k],
+                                         remaining_nodes[node_degrees[remaining_nodes] >= 0])
         if len(nodes_to_remove) > 0:
             k_values[nodes_to_remove] = k
-            degrees[nodes_to_remove] = -1  # Mark nodes as processed
+            node_degrees[nodes_to_remove] = -1  # Mark nodes as processed
             for node_id in nodes_to_remove:
-                degrees[adj_matrix[node_id] == 1] -= 1
+                if flag:
+                    node_degrees[adj_matrix[node_id] == 1] -= 1
+                else:
+                    neighbors = set(adj_matrix[node_id].indices)
+                    for neighbor in neighbors:
+                        node_degrees[neighbor] -= 1
             remaining_nodes = np.setdiff1d(remaining_nodes, nodes_to_remove)
-        if all(x < 0 or x > k for x in degrees):
+        if all(x < 0 or x > k for x in node_degrees):
             k += 1
 
-    return k_values
-
-
-import numpy as np
-import scipy.sparse as sp
-
-
-def compute_node_degrees(adj_matrix):
-    # Calculate node degrees by summing the rows of the adjacency matrix
-    node_degrees = np.array(adj_matrix.sum(axis=1)).flatten()
-    return node_degrees
-
-
-def k_shell_algorithm(adj_matrix):
-    degrees = compute_node_degrees(adj_matrix)
-    k_values = np.zeros(len(degrees), dtype=int)
-    remaining_nodes = np.arange(len(degrees))
-
-    k = 1
-    while len(remaining_nodes) > 0:
-        nodes_to_remove = np.intersect1d(
-            remaining_nodes[degrees[remaining_nodes] <= k],
-            remaining_nodes[degrees[remaining_nodes] >= 0]
-        )
-
-        if len(nodes_to_remove) > 0:
-            k_values[nodes_to_remove] = k
-            degrees[nodes_to_remove] = -1  # Mark nodes as processed
-
-            for node_id in nodes_to_remove:
-                neighbors = adj_matrix[node_id].indices
-                degrees[neighbors] -= 1
-
-            remaining_nodes = np.setdiff1d(remaining_nodes, nodes_to_remove)
-
-        if all(x < 0 or x > k for x in degrees):
-            k += 1
-
-    return k_values
+    return k_values - k_values.min() + 1
 
 
 def TVD_numpy(predictions, targets):  # accepts two numpy arrays of dimension: (num. instances, )
@@ -122,8 +92,6 @@ def JSD(a, b):
 
 def topK_overlap_loss(new_att, old_att, adj, K=2, metric='l1'):
     new_att, old_att = new_att.squeeze(), old_att.squeeze()
-    src, dst = adj.nonzero()
-    src, dst = torch.tensor(src), torch.tensor(dst)
 
     loss = 0
 

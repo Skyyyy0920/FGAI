@@ -2,6 +2,8 @@ from dgl.data import GINDataset
 from ogb.graphproppred import DglGraphPropPredDataset
 from dgl.dataloading import GraphDataLoader
 from dgl.data.utils import split_dataset
+from torch_geometric.data import DataLoader
+from torch_geometric.datasets import TUDataset
 
 
 def load_dataset(args):
@@ -23,8 +25,20 @@ def load_dataset(args):
     else:
         raise ValueError(f"Unknown dataset name: {args.dataset}")
 
+    # dataset = TUDataset('./dataset/', name=args.dataset, use_node_attr=True, use_edge_attr=True)
+    # n = (len(dataset) + 9) // 10
+    # in_feats = dataset.num_features
+    # num_classes = dataset.num_classes
+    # dataset = dataset.shuffle()
+    # test_dataset = dataset[:n]
+    # valid_dataset = dataset[n:2 * n]
+    # train_dataset = dataset[2 * n:]
+
     train_loader = GraphDataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=False)
     valid_loader = GraphDataLoader(valid_dataset, batch_size=args.batch_size, shuffle=False, drop_last=False)
     test_loader = GraphDataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, drop_last=False)
+    # train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=False)
+    # valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=False, drop_last=False)
+    # test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, drop_last=False)
 
     return train_loader, valid_loader, test_loader, in_feats, num_classes

@@ -196,9 +196,9 @@ class GATGraphClassifier(nn.Module):
             num_nodes = g.number_of_nodes()
             adj = sp.csr_matrix((np.ones(len(src)), (src.cpu().numpy(), dst.cpu().numpy())),
                                 shape=(num_nodes, num_nodes))
-            k_values = torch.tensor(k_shell_algorithm(adj), dtype=torch.float32)
+            k_values = torch.tensor(k_shell_algorithm(adj), dtype=torch.float32).to(x.device)
             k_values /= k_values.sum()
-            g.ndata['w'] = k_values
+            g.ndata['w'] = k_values.view(-1, 1).repeat(1, x.shape[1])
             graph_representation = dgl.readout_nodes(g, 'h', weight='w')
         elif self.readout_type == 'mean':
             graph_representation = dgl.readout_nodes(g, 'h', op='mean')

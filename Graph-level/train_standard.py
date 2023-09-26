@@ -18,8 +18,7 @@ def get_args():
     parser.add_argument('--device', type=str, default=device, help='Running on which device')
 
     # Data
-    parser.add_argument('--dataset',
-                        type=str,
+    parser.add_argument('--dataset', type=str,
                         # default='ogbg-ppa',
                         # default='ogbg-molhiv',
                         default='MUTAG',
@@ -30,8 +29,13 @@ def get_args():
 
     # Experimental Setup
     parser.add_argument('--num_epochs', type=int, default=200, help='Training epoch')
-    parser.add_argument('--batch_size', type=int, default=8)
-    parser.add_argument('--readout_type', type=str, default='mean')
+    parser.add_argument('--batch_size', type=int, default=32)
+    parser.add_argument('--readout_type', type=str,
+                        # default='K-shell',
+                        default='mean',
+                        # default='max',
+                        # default='min'
+                        help='Readout graph')
 
     args = parser.parse_args()
     return args
