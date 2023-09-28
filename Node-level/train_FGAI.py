@@ -241,7 +241,7 @@ if __name__ == '__main__':
     new_outputs, new_graph_repr, new_att = \
         new_outputs[:FGAI_outputs.shape[0]], new_graph_repr[:FGAI_graph_repr.shape[0]], new_att[:FGAI_att.shape[0]]
 
-    TVD_score = TVD(FGAI_att, new_att)
+    TVD_score = TVD(orig_att, new_att) / len(orig_att)
     JSD_score = JSD(FGAI_att, new_att)
     logging.info(f"JSD: {JSD_score}")
     logging.info(f"TVD: {TVD_score}")
