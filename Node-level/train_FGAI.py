@@ -27,8 +27,8 @@ def get_args():
                         type=str,
                         # default='ogbn-arxiv',
                         # default='cora',
-                        # default='pubmed',
-                        default='citeseer',
+                        default='pubmed',
+                        # default='citeseer',
                         help='Dataset name')
 
     # Experimental Setup
@@ -44,7 +44,7 @@ def get_args():
     parser.add_argument('--lambda_3', type=float, default=5e-2)
     parser.add_argument('--K', type=int, default=10000)
 
-    parser.add_argument('--save_path', type=str, default='./checkpoints/', help='Checkpoints saving path')
+    parser.add_argument('--save_path', type=str, default='./FGAI_checkpoints/', help='Checkpoints saving path')
 
     args = parser.parse_args()
     return args
@@ -191,7 +191,7 @@ if __name__ == '__main__':
                          n_edge_max=args.n_edge_max,
                          feat_lim_min=features.min().item(),
                          feat_lim_max=features.max().item(),
-                         # loss=TVD,
+                         loss=TVD,
                          device=args.device)
     attacker_rho = PGD(epsilon=args.epsilon,
                        n_epoch=args.n_epoch_attack,

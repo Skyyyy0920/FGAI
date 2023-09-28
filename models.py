@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import dgl
 import dgl.function as fn
+from dgl.nn import GATv2Conv
 from dgl.base import DGLError
 from dgl.ops import edge_softmax
 from dgl.utils import expand_as_pair
@@ -175,48 +176,32 @@ class GATNodeClassifier(nn.Module):
         return logits, graph_representation, att
 
 
-class GAT(nn.Module):
-    def __init__(self,
-                 in_features,
-                 out_features,
-                 hids=[8],
-                 num_heads=[8],
-                 acts=['elu'],
-                 dropout=0.6,
-                 bias=True):
+class GATv2NodeClassifier(nn.Module):
+    def __init__(self, in_feats, hid_dim, n_classes, n_layers, n_heads, feat_drop, attn_drop):
+        super(GATv2NodeClassifier, self).__init__()
+        self.layers = nn.ModuleList()
+        self.layers.append(GATv2Conv(in_feats, hid_dim, n_heads[0], feat_drop, attn_drop, activation=F.elu))
+        for i in range(0, n_layers - 1):
+            in_hid_dim = hid_dim * n_heads[i]
+            self.layers.append(GATv2Conv(in_hid_dim, hid_dim, n_heads[i + 1], feat_drop, attn_drop, activation=F.elu))
+        # self.out_layer = nn.Linear(hid_dim * n_heads[-1], n_classes)
+        self.out_layer = GATv2Conv(hid_dim * n_heads[-1], n_classes, 1, feat_drop, attn_drop, activation=F.elu)
+        self.dropout = nn.Dropout(0.6)
 
-        super().__init__()
-        head = 1
-        conv = []
-        for hid, num_head, act in zip(hids, num_heads, acts):
-            conv.append(GATConv(in_features * head,
-                                hid,
-                                bias=bias,
-                                num_heads=num_head,
-                                feat_drop=dropout,
-                                attn_drop=dropout))
-            conv.append(activations.get(act))
-            conv.append(nn.Flatten(start_dim=1))
-            conv.append(nn.Dropout(dropout))
-            in_features = hid
-            head = num_head
+    def forward(self, x, adj):
+        g = dgl.from_scipy(adj).to(x.device)
+        g.ndata['features'] = x
 
-        conv.append(GATConv(in_features * head,
-                            out_features,
-                            num_heads=1,
-                            bias=bias,
-                            feat_drop=dropout,
-                            attn_drop=dropout))
-        conv = Sequential(*conv, loc=1)  # loc=1 specifies the location of features
+        for layer in self.layers:
+            x, att = layer(g, x, get_attention=True)
+            x = F.elu(x, alpha=1)
+            x = x.flatten(1)  # use concat to handle multi-head. for mean method, use x = x.mean(1)
+            x = self.dropout(x)
+        graph_representation = x.mean(dim=0)
+        x = self.out_layer(g, x)
+        logits = x.flatten(1)
 
-        self.conv = conv
-
-    def reset_parameters(self):
-        for conv in self.conv:
-            conv.reset_parameters()
-
-    def forward(self, x, g):
-        return self.conv(g, x).mean(1)
+        return logits, graph_representation, att
 
 
 class GATGraphClassifier(nn.Module):

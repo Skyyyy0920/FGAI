@@ -2,7 +2,7 @@ from utils import *
 import torch.nn.functional as F
 
 
-class StandardTrainer:
+class VanillaTrainer:
     def __init__(self, standard_model, criterion, optimizer, args):
         self.model = standard_model
         self.criterion = criterion
@@ -49,6 +49,9 @@ class FGAITrainer:
 
     def train(self, features, adj, label, idx_split, orig_outputs, orig_graph_repr, orig_att):
         train_idx, valid_idx, test_idx = idx_split
+        best_val_loss = float('inf')
+        current_patience = 0
+        early_stopping_flag = False
         for epoch in range(self.num_epochs):
             self.model.train()
 
@@ -89,6 +92,19 @@ class FGAITrainer:
                 val_outputs, orig_graph_repr, _ = self.model(features, adj)
                 val_pred = torch.argmax(val_outputs[valid_idx], dim=1)
                 val_accuracy = accuracy_score(label[valid_idx].cpu(), val_pred.cpu())
+                val_loss = F.cross_entropy(val_outputs[valid_idx], label[valid_idx])
+
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                current_patience = 0
+            else:
+                current_patience += 1
+                if current_patience >= 5:
+                    logging.info(f"Early stopping at epoch {epoch + 1}...")
+                    early_stopping_flag = True
 
             logging.info(f'Epoch [{epoch + 1}/{self.num_epochs}] | Train Loss: {loss.item():.4f} | '
-                         f'Val Accuracy: {val_accuracy:.4f}')
+                         f'Val loss: {val_loss} | Val Accuracy: {val_accuracy:.4f}')
+
+            if early_stopping_flag:
+                break

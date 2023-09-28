@@ -4,9 +4,9 @@ import scipy.sparse as sp
 import torch.nn as nn
 import torch.optim as optim
 from utils import *
-from models import GATNodeClassifier
+from models import GATv2NodeClassifier
 from load_dataset import load_dataset
-from trainer import StandardTrainer
+from trainer import VanillaTrainer
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -43,7 +43,7 @@ if __name__ == '__main__':
     for handler in logging.root.handlers[:]:
         logging.root.removeHandler(handler)
     logging_time = time.strftime('%m-%d_%H-%M', time.localtime())
-    save_dir = os.path.join("standard_model", f"{args.dataset}")
+    save_dir = os.path.join("GATv2_checkpoints", f"{args.dataset}")
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
     logging.basicConfig(level=logging.INFO,
@@ -71,61 +71,61 @@ if __name__ == '__main__':
 
     criterion = nn.CrossEntropyLoss()
     if args.dataset == 'ogbn-arxiv':
-        standard_model = GATNodeClassifier(in_feats=in_feats,
-                                           hid_dim=128,
-                                           n_classes=num_classes,
-                                           n_layers=3,
-                                           n_heads=[4, 2, 1],
-                                           feat_drop=0.05,
-                                           attn_drop=0).to(args.device)
-        optimizer = optim.Adam(standard_model.parameters(),
+        GATv2 = GATv2NodeClassifier(in_feats=in_feats,
+                                    hid_dim=128,
+                                    n_classes=num_classes,
+                                    n_layers=3,
+                                    n_heads=[4, 2, 1],
+                                    feat_drop=0.05,
+                                    attn_drop=0).to(args.device)
+        optimizer = optim.Adam(GATv2.parameters(),
                                lr=1e-2,
                                weight_decay=0)
     elif args.dataset in ['cora', 'citeseer']:
-        standard_model = GATNodeClassifier(in_feats=in_feats,
-                                           hid_dim=8,
-                                           n_classes=num_classes,
-                                           n_layers=1,
-                                           n_heads=[8],
-                                           feat_drop=0.6,
-                                           attn_drop=0.6).to(args.device)
-        optimizer = optim.Adam(standard_model.parameters(),
+        GATv2 = GATv2NodeClassifier(in_feats=in_feats,
+                                    hid_dim=8,
+                                    n_classes=num_classes,
+                                    n_layers=1,
+                                    n_heads=[8],
+                                    feat_drop=0.6,
+                                    attn_drop=0.6).to(args.device)
+        optimizer = optim.Adam(GATv2.parameters(),
                                lr=5e-3,
                                weight_decay=5e-4)
     elif args.dataset == 'pubmed':
-        standard_model = GATNodeClassifier(in_feats=in_feats,
-                                           hid_dim=8,
-                                           n_classes=num_classes,
-                                           n_layers=1,
-                                           n_heads=[8],
-                                           feat_drop=0.6,
-                                           attn_drop=0.6).to(args.device)
-        optimizer = optim.Adam(standard_model.parameters(),
+        GATv2 = GATv2NodeClassifier(in_feats=in_feats,
+                                    hid_dim=8,
+                                    n_classes=num_classes,
+                                    n_layers=1,
+                                    n_heads=[8],
+                                    feat_drop=0.6,
+                                    attn_drop=0.6).to(args.device)
+        optimizer = optim.Adam(GATv2.parameters(),
                                lr=1e-2,
                                weight_decay=1e-3)
     else:
-        standard_model = GATNodeClassifier(in_feats=in_feats,
-                                           hid_dim=128,
-                                           n_classes=num_classes,
-                                           n_layers=3,
-                                           n_heads=[4, 2, 1],
-                                           feat_drop=0.05,
-                                           attn_drop=0).to(args.device)
-        optimizer = optim.Adam(standard_model.parameters(),
+        GATv2 = GATv2NodeClassifier(in_feats=in_feats,
+                                    hid_dim=128,
+                                    n_classes=num_classes,
+                                    n_layers=3,
+                                    n_heads=[4, 2, 1],
+                                    feat_drop=0.05,
+                                    attn_drop=0).to(args.device)
+        optimizer = optim.Adam(GATv2.parameters(),
                                lr=1e-3,
                                weight_decay=0)
 
-    total_params = sum(p.numel() for p in standard_model.parameters())
+    total_params = sum(p.numel() for p in GATv2.parameters())
     logging.info(f"Total parameters: {total_params}")
-    logging.info(f"Model: {standard_model}")
+    logging.info(f"Model: {GATv2}")
     logging.info(f"Optimizer: {optimizer}")
 
-    std_trainer = StandardTrainer(standard_model, criterion, optimizer, args)
+    std_trainer = VanillaTrainer(GATv2, criterion, optimizer, args)
 
     orig_outputs, orig_graph_repr, orig_att = std_trainer.train(features, adj, label, train_idx, valid_idx)
 
-    evaluate_node_level(standard_model, criterion, features, adj, label, test_idx)
+    evaluate_node_level(GATv2, criterion, features, adj, label, test_idx)
 
-    torch.save(standard_model.state_dict(), os.path.join(save_dir, 'model_parameters.pth'))
+    torch.save(GATv2.state_dict(), os.path.join(save_dir, 'model_parameters.pth'))
     tensor_dict = {'orig_outputs': orig_outputs, 'orig_graph_repr': orig_graph_repr, 'orig_att': orig_att}
     torch.save(tensor_dict, os.path.join(save_dir, 'tensors.pth'))

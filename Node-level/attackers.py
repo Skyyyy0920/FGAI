@@ -243,14 +243,14 @@ class PGD(InjectionAttack):
             features_attack.retain_grad()
             features_concat = torch.cat((features, features_attack), dim=0)
             pred, graph_repr, att = model(features_concat, adj_attacked_tensor)
-            origin_labels = torch.argmax(pred_orig, dim=1)
+            orig_labels = torch.argmax(pred_orig, dim=1)
 
             if self.loss == F.nll_loss:
-                pred_loss = self.loss(pred[:n_total][target_mask], origin_labels[target_mask]).to(self.device)
+                pred_loss = self.loss(pred[:n_total][target_mask], orig_labels[target_mask]).to(self.device)
             elif self.loss == topK_overlap_loss:
                 pred_loss = self.loss(att, att_orig, adj).to(self.device)
             else:
-                pred_loss = self.loss(pred[:n_total][target_mask], origin_labels[target_mask]).to(self.device)
+                pred_loss = self.loss(pred[:n_total][target_mask], pred_orig[target_mask]).to(self.device)
 
             model.zero_grad()
             pred_loss.backward(retain_graph=True)
@@ -259,7 +259,7 @@ class PGD(InjectionAttack):
             features_attack = torch.clamp(features_attack, feat_lim_min, feat_lim_max)
             features_attack = features_attack.detach()
 
-            test_score = self.eval_metric(pred[:n_total][target_mask], origin_labels[target_mask])
+            test_score = self.eval_metric(pred[:n_total][target_mask], orig_labels[target_mask])
 
             if self.early_stop:
                 self.early_stop(test_score)
