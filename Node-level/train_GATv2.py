@@ -7,6 +7,7 @@ from utils import *
 from models import GATv2NodeClassifier
 from load_dataset import load_dataset
 from trainer import VanillaTrainer
+from attackers import PGD
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -24,8 +25,8 @@ def get_args():
                         # default='ogbn-arxiv',
                         # default='ogbn-products',
                         # default='ogbn-papers100M',
-                        default='cora',
-                        # default='pubmed',
+                        # default='cora',
+                        default='pubmed',
                         # default='citeseer',
                         help='Dataset name')
 
@@ -129,3 +130,16 @@ if __name__ == '__main__':
     torch.save(GATv2.state_dict(), os.path.join(save_dir, 'model_parameters.pth'))
     tensor_dict = {'orig_outputs': orig_outputs, 'orig_graph_repr': orig_graph_repr, 'orig_att': orig_att}
     torch.save(tensor_dict, os.path.join(save_dir, 'tensors.pth'))
+
+    adj_perturbed = sp.load_npz(f'./vanilla_model/{args.dataset}/adj_delta.npz')
+    feats_perturbed = torch.load(f'./vanilla_model/{args.dataset}/feats_delta.pth')
+
+    GATv2.eval()
+    new_outputs, new_graph_repr, new_att = GATv2(torch.cat((features, feats_perturbed), dim=0), adj_perturbed)
+    new_outputs, new_graph_repr, new_att = \
+        new_outputs[:orig_outputs.shape[0]], new_graph_repr[:orig_graph_repr.shape[0]], new_att[:orig_att.shape[0]]
+
+    TVD_score = TVD(orig_att, new_att)
+    JSD_score = JSD(orig_att, new_att)
+    logging.info(f"JSD: {JSD_score}")
+    logging.info(f"TVD: {TVD_score}")

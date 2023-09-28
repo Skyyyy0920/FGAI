@@ -1,3 +1,4 @@
+import logging
 import time
 import argparse
 import scipy.sparse as sp
@@ -7,6 +8,7 @@ from utils import *
 from models import GATNodeClassifier
 from load_dataset import load_dataset
 from trainer import VanillaTrainer
+from attackers import PGD
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -24,13 +26,17 @@ def get_args():
                         # default='ogbn-arxiv',
                         # default='ogbn-products',
                         # default='ogbn-papers100M',
-                        default='cora',
-                        # default='pubmed',
+                        # default='cora',
+                        default='pubmed',
                         # default='citeseer',
                         help='Dataset name')
 
     # Experimental Setup
     parser.add_argument('--num_epochs', type=int, default=200, help='Training epoch')
+    parser.add_argument('--n_inject_max', type=int, default=20)
+    parser.add_argument('--n_edge_max', type=int, default=20)
+    parser.add_argument('--epsilon', type=float, default=0.05)
+    parser.add_argument('--n_epoch_attack', type=int, default=10)
 
     args = parser.parse_args()
     return args
@@ -128,4 +134,28 @@ if __name__ == '__main__':
 
     torch.save(vanilla_model.state_dict(), os.path.join(save_dir, 'model_parameters.pth'))
     tensor_dict = {'orig_outputs': orig_outputs, 'orig_graph_repr': orig_graph_repr, 'orig_att': orig_att}
-    torch.save(tensor_dict, os.path.join(save_dir, 'tensors.pth'))
+    torch.save(tensor_dict, os.path.join(save_dir, 'orig_tensors.pth'))
+
+    attacker = PGD(epsilon=args.epsilon,
+                   n_epoch=args.n_epoch_attack,
+                   n_inject_max=args.n_inject_max,
+                   n_edge_max=args.n_edge_max,
+                   feat_lim_min=features.min().item(),
+                   feat_lim_max=features.max().item(),
+                   device=args.device)
+
+    vanilla_model.eval()
+    adj_delta, feats_delta = attacker.attack(vanilla_model, adj, features, train_idx, None)
+    new_outputs, new_graph_repr, new_att = vanilla_model(torch.cat((features, feats_delta), dim=0), adj_delta)
+    new_outputs, new_graph_repr, new_att = \
+        new_outputs[:orig_outputs.shape[0]], new_graph_repr[:orig_graph_repr.shape[0]], new_att[:orig_att.shape[0]]
+
+    TVD_score = TVD(orig_att, new_att)
+    JSD_score = JSD(orig_att, new_att)
+    logging.info(f"JSD: {JSD_score}")
+    logging.info(f"TVD: {TVD_score}")
+
+    sp.save_npz(os.path.join(save_dir, 'adj_delta.npz'), adj_delta)
+    torch.save(feats_delta, os.path.join(save_dir, 'feats_delta.pth'))
+    tensor_dict = {'new_outputs': new_outputs, 'new_graph_repr': new_graph_repr, 'new_att': new_att}
+    torch.save(tensor_dict, os.path.join(save_dir, 'new_tensors.pth'))

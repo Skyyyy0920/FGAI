@@ -110,13 +110,13 @@ if __name__ == '__main__':
     # 5. Build models, define overall loss and optimizer
     # ==================================================================================================
     if args.dataset == 'ogbn-arxiv':
-        standard_model = GATNodeClassifier(in_feats=in_feats,
-                                           hid_dim=128,
-                                           n_classes=num_classes,
-                                           n_layers=3,
-                                           n_heads=[4, 2, 1],
-                                           feat_drop=0.05,
-                                           attn_drop=0).to(args.device)
+        vanilla_model = GATNodeClassifier(in_feats=in_feats,
+                                          hid_dim=128,
+                                          n_classes=num_classes,
+                                          n_layers=3,
+                                          n_heads=[4, 2, 1],
+                                          feat_drop=0.05,
+                                          attn_drop=0).to(args.device)
         FGAI = GATNodeClassifier(in_feats=in_feats,
                                  hid_dim=128,
                                  n_classes=num_classes,
@@ -128,13 +128,13 @@ if __name__ == '__main__':
                                     lr=1e-2,
                                     weight_decay=0)
     elif args.dataset in ['cora', 'citeseer']:
-        standard_model = GATNodeClassifier(in_feats=in_feats,
-                                           hid_dim=8,
-                                           n_classes=num_classes,
-                                           n_layers=1,
-                                           n_heads=[8],
-                                           feat_drop=0.6,
-                                           attn_drop=0.6).to(args.device)
+        vanilla_model = GATNodeClassifier(in_feats=in_feats,
+                                          hid_dim=8,
+                                          n_classes=num_classes,
+                                          n_layers=1,
+                                          n_heads=[8],
+                                          feat_drop=0.6,
+                                          attn_drop=0.6).to(args.device)
         FGAI = GATNodeClassifier(in_feats=in_feats,
                                  hid_dim=8,
                                  n_classes=num_classes,
@@ -146,13 +146,13 @@ if __name__ == '__main__':
                                     lr=1e-2,
                                     weight_decay=5e-4)
     elif args.dataset == 'pubmed':
-        standard_model = GATNodeClassifier(in_feats=in_feats,
-                                           hid_dim=8,
-                                           n_classes=num_classes,
-                                           n_layers=1,
-                                           n_heads=[8],
-                                           feat_drop=0.6,
-                                           attn_drop=0.6).to(args.device)
+        vanilla_model = GATNodeClassifier(in_feats=in_feats,
+                                          hid_dim=8,
+                                          n_classes=num_classes,
+                                          n_layers=1,
+                                          n_heads=[8],
+                                          feat_drop=0.6,
+                                          attn_drop=0.6).to(args.device)
         FGAI = GATNodeClassifier(in_feats=in_feats,
                                  hid_dim=8,
                                  n_classes=num_classes,
@@ -164,13 +164,13 @@ if __name__ == '__main__':
                                     lr=1e-2,
                                     weight_decay=5e-4)
     else:
-        standard_model = GATNodeClassifier(in_feats=in_feats,
-                                           hid_dim=128,
-                                           n_classes=num_classes,
-                                           n_layers=3,
-                                           n_heads=[4, 2, 1],
-                                           feat_drop=0.05,
-                                           attn_drop=0).to(args.device)
+        vanilla_model = GATNodeClassifier(in_feats=in_feats,
+                                          hid_dim=128,
+                                          n_classes=num_classes,
+                                          n_layers=3,
+                                          n_heads=[4, 2, 1],
+                                          feat_drop=0.05,
+                                          attn_drop=0).to(args.device)
         FGAI = GATNodeClassifier(in_feats=in_feats,
                                  hid_dim=128,
                                  n_classes=num_classes,
@@ -206,26 +206,42 @@ if __name__ == '__main__':
     FGAI_trainer = FGAITrainer(FGAI, optimizer_FGAI, attacker_delta, attacker_rho, args)
 
     # ==================================================================================================
-    # 6. Load pre-trained standard model
+    # 6. Load pre-trained vanilla model
     # ==================================================================================================
-    standard_model.load_state_dict(torch.load(f'./standard_model/{args.dataset}/model_parameters.pth'))
-    standard_model.eval()
+    vanilla_model.load_state_dict(torch.load(f'./vanilla_model/{args.dataset}/model_parameters.pth'))
+    vanilla_model.eval()
 
-    tensor_dict = torch.load(f'./standard_model/{args.dataset}/tensors.pth')
+    tensor_dict = torch.load(f'./vanilla_model/{args.dataset}/orig_tensors.pth')
     orig_outputs = tensor_dict['orig_outputs'].to(device=args.device)
     orig_graph_repr = tensor_dict['orig_graph_repr'].to(device=args.device)
     orig_att = tensor_dict['orig_att'].to(device=args.device)
 
-    evaluate_node_level(standard_model, criterion, features, adj, label, test_idx)
+    evaluate_node_level(vanilla_model, criterion, features, adj, label, test_idx)
 
     # ==================================================================================================
     # 7. Train our FGAI
     # ==================================================================================================
     idx_split = train_idx, valid_idx, test_idx
-    FGAI_trainer.train(features, adj, label, idx_split, orig_outputs, orig_graph_repr, orig_att)
+    FGAI_outputs, FGAI_graph_repr, FGAI_att = FGAI_trainer.train(features, adj, label, idx_split, orig_outputs,
+                                                                 orig_graph_repr, orig_att)
     evaluate_node_level(FGAI, criterion, features, adj, label, test_idx)
 
     # ==================================================================================================
     # 7. Save FGAI
     # ==================================================================================================
     torch.save(FGAI.state_dict(), f'{save_dir}/FGAI_parameters.pth')
+
+    # ==================================================================================================
+    # 8. Evaluation
+    # ==================================================================================================
+    adj_perturbed = sp.load_npz(f'./vanilla_model/{args.dataset}/adj_delta.npz')
+    feats_perturbed = torch.load(f'./vanilla_model/{args.dataset}/feats_delta.pth')
+
+    new_outputs, new_graph_repr, new_att = FGAI(torch.cat((features, feats_perturbed), dim=0), adj_perturbed)
+    new_outputs, new_graph_repr, new_att = \
+        new_outputs[:FGAI_outputs.shape[0]], new_graph_repr[:FGAI_graph_repr.shape[0]], new_att[:FGAI_att.shape[0]]
+
+    TVD_score = TVD(FGAI_att, new_att)
+    JSD_score = JSD(FGAI_att, new_att)
+    logging.info(f"JSD: {JSD_score}")
+    logging.info(f"TVD: {TVD_score}")

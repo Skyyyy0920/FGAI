@@ -85,6 +85,8 @@ def kl(a, b):
 
 
 def JSD(a, b):
+    a[a == 0] = 1e-10
+    b[b == 0] = 1e-10
     loss = kl(a, b) + kl(b, a)
     loss /= 2
     return loss

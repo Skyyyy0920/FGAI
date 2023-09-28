@@ -52,6 +52,7 @@ class FGAITrainer:
         best_val_loss = float('inf')
         current_patience = 0
         early_stopping_flag = False
+        FGAI_outputs, FGAI_graph_repr, FGAI_att = None, None, None
         for epoch in range(self.num_epochs):
             self.model.train()
 
@@ -108,3 +109,5 @@ class FGAITrainer:
 
             if early_stopping_flag:
                 break
+
+        return FGAI_outputs, FGAI_graph_repr, FGAI_att
