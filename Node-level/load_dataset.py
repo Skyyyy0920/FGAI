@@ -18,8 +18,16 @@ def load_dataset(args):
         train_idx, valid_idx, test_idx = split_idx["train"], split_idx["valid"], split_idx["test"]
         num_classes = dataset.num_classes
     elif args.dataset in ['cora', 'pubmed', 'citeseer']:
-        dataset = CoraGraphDataset()
+        if args.dataset == 'cora':
+            dataset = CoraGraphDataset()
+        elif args.dataset == 'pubmed':
+            dataset = PubmedGraphDataset()
+        else:
+            dataset = CiteseerGraphDataset()
         g = dataset[0]
+        print(f"Total edges before adding self-loop {g.number_of_edges()}")
+        g = g.remove_self_loop().add_self_loop()
+        print(f"Total edges after adding self-loop {g.number_of_edges()}")
         num_classes = dataset.num_classes
         train_idx, valid_idx, test_idx = g.ndata['train_mask'], g.ndata['val_mask'], g.ndata['test_mask']
         label = g.ndata['label']

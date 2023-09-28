@@ -13,7 +13,6 @@ from attackers import PGD
 import torch.optim as optim
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-device = 'cpu'
 
 
 def get_args():
@@ -26,26 +25,24 @@ def get_args():
     # Data
     parser.add_argument('--dataset',
                         type=str,
-                        default='ogbn-arxiv',
-                        # default='ogbn-products',
-                        # default='ogbn-papers100M',
+                        # default='ogbn-arxiv',
                         # default='cora',
                         # default='pubmed',
-                        # default='citeseer',
+                        default='citeseer',
                         help='Dataset name')
 
     # Experimental Setup
-    parser.add_argument('--num_epochs', type=int, default=300, help='Training epoch')
+    parser.add_argument('--num_epochs', type=int, default=100, help='Training epoch')
 
-    parser.add_argument('--n_inject_max', type=int, default=50)
-    parser.add_argument('--n_edge_max', type=int, default=50)
-    parser.add_argument('--epsilon', type=float, default=0.01)
+    parser.add_argument('--n_inject_max', type=int, default=20)
+    parser.add_argument('--n_edge_max', type=int, default=20)
+    parser.add_argument('--epsilon', type=float, default=0.05)
     parser.add_argument('--n_epoch_attack', type=int, default=10)
 
-    parser.add_argument('--lambda_1', type=float, default=1e-2)
+    parser.add_argument('--lambda_1', type=float, default=1e-1)
     parser.add_argument('--lambda_2', type=float, default=1e-2)
-    parser.add_argument('--lambda_3', type=float, default=1e-2)
-    parser.add_argument('--K', type=int, default=500000)
+    parser.add_argument('--lambda_3', type=float, default=5e-2)
+    parser.add_argument('--K', type=int, default=10000)
 
     parser.add_argument('--save_path', type=str, default='./checkpoints/', help='Checkpoints saving path')
 
@@ -59,8 +56,6 @@ if __name__ == '__main__':
     # ==================================================================================================
     print('\n' + '=' * 36 + ' Get experiment args ' + '=' * 36)
     args = get_args()
-    print(f"Using device: {args.device}")
-    print(f"PyTorch Version: {torch.__version__}")
     # setup_seed(args.seed)  # make the experiment repeatable
 
     # ==================================================================================================
@@ -83,6 +78,11 @@ if __name__ == '__main__':
     console.setFormatter(logging.Formatter(fmt='[%(asctime)s %(levelname)s]%(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
     logging.getLogger('').addHandler(console)
     logging.getLogger('matplotlib.font_manager').disabled = True
+
+    logging.info(f"Using device: {args.device}")
+    logging.info(f"PyTorch Version: {torch.__version__}")
+    logging.info(f"args: {args}")
+    logging.info(f"Saving path: {save_dir}")
 
     # ==================================================================================================
     # 3. Save codes and settings
@@ -127,6 +127,42 @@ if __name__ == '__main__':
         optimizer_FGAI = optim.Adam(FGAI.parameters(),
                                     lr=1e-2,
                                     weight_decay=0)
+    elif args.dataset in ['cora', 'citeseer']:
+        standard_model = GATNodeClassifier(in_feats=in_feats,
+                                           hid_dim=8,
+                                           n_classes=num_classes,
+                                           n_layers=1,
+                                           n_heads=[8],
+                                           feat_drop=0.6,
+                                           attn_drop=0.6).to(args.device)
+        FGAI = GATNodeClassifier(in_feats=in_feats,
+                                 hid_dim=8,
+                                 n_classes=num_classes,
+                                 n_layers=1,
+                                 n_heads=[8],
+                                 feat_drop=0.6,
+                                 attn_drop=0.6).to(args.device)
+        optimizer_FGAI = optim.Adam(FGAI.parameters(),
+                                    lr=1e-2,
+                                    weight_decay=5e-4)
+    elif args.dataset == 'pubmed':
+        standard_model = GATNodeClassifier(in_feats=in_feats,
+                                           hid_dim=8,
+                                           n_classes=num_classes,
+                                           n_layers=1,
+                                           n_heads=[8],
+                                           feat_drop=0.6,
+                                           attn_drop=0.6).to(args.device)
+        FGAI = GATNodeClassifier(in_feats=in_feats,
+                                 hid_dim=8,
+                                 n_classes=num_classes,
+                                 n_layers=1,
+                                 n_heads=[8],
+                                 feat_drop=0.6,
+                                 attn_drop=0.6).to(args.device)
+        optimizer_FGAI = optim.Adam(FGAI.parameters(),
+                                    lr=1e-2,
+                                    weight_decay=5e-4)
     else:
         standard_model = GATNodeClassifier(in_feats=in_feats,
                                            hid_dim=128,
@@ -145,6 +181,10 @@ if __name__ == '__main__':
         optimizer_FGAI = optim.Adam(FGAI.parameters(),
                                     lr=1e-2,
                                     weight_decay=0)
+
+    logging.info(f"Model: {FGAI}")
+    logging.info(f"Optimizer: {optimizer_FGAI}")
+
     attacker_delta = PGD(epsilon=args.epsilon,
                          n_epoch=args.n_epoch_attack,
                          n_inject_max=args.n_inject_max,

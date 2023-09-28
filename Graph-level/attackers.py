@@ -73,7 +73,7 @@ class PGD(InjectionAttack):
         else:
             self.early_stop = early_stop
 
-    def attack(self, model, adj, features, target_mask, adj_norm_func):
+    def attack(self, model, g, features, target_mask, adj_norm_func):
         r"""
 
         Description
@@ -105,19 +105,8 @@ class PGD(InjectionAttack):
         model.to(self.device)
         n_total, n_feat = features.shape
         features = utils.feat_preprocess(features=features, device=self.device)
-        adj_tensor = utils.adj_preprocess(adj=adj,
-                                          adj_norm_func=adj_norm_func,
-                                          model_type='dgl',
-                                          device=self.device)
-        pred_orig, _, att_orig = model(features, adj_tensor)
 
-        if self.n_inject_max > 0:
-            adj_attack = self.injection(adj=adj,
-                                        n_inject=self.n_inject_max,
-                                        n_node=n_total,
-                                        target_mask=target_mask)
-        else:
-            adj_attack = adj
+        pred_orig, _, att_orig = model(features, g)
 
         features_attack = np.random.normal(loc=0, scale=self.feat_lim_max / 10, size=(self.n_inject_max, n_feat))
         features_attack = self.update_features(model=model,
@@ -130,65 +119,7 @@ class PGD(InjectionAttack):
                                                target_mask=target_mask,
                                                adj_norm_func=adj_norm_func)
 
-        return adj_attack, features_attack
-
-    def injection(self, adj, n_inject, n_node, target_mask):
-        r"""
-
-        Description
-        -----------
-        Randomly inject nodes to target nodes.
-
-        Parameters
-        ----------
-        adj : scipy.sparse.csr.csr_matrix
-            Adjacency matrix in form of ``N * N`` sparse matrix.
-        n_inject : int
-            Number of injection.
-        n_node : int
-            Number of all nodes.
-        target_mask : torch.Tensor
-            Mask of attack target nodes in form of ``N * 1`` torch bool tensor.
-
-        Returns
-        -------
-        adj_attack : scipy.sparse.csr.csr_matrix
-            Adversarial adjacency matrix in form of :math:`(N + N_{inject})\times(N + N_{inject})` sparse matrix.
-
-        """
-
-        test_index = torch.where(target_mask)[0]
-        n_test = test_index.shape[0]
-        new_edges_x = []
-        new_edges_y = []
-        new_data = []
-        for i in range(n_inject):
-            islinked = np.zeros(n_test)
-            for j in range(self.n_edge_max):
-                x = i + n_node
-
-                yy = random.randint(0, n_test - 1)
-                while islinked[yy] > 0:
-                    yy = random.randint(0, n_test - 1)
-                islinked[yy] = 1
-
-                y = test_index[yy]
-                new_edges_x.extend([x, y])
-                new_edges_y.extend([y, x])
-                new_data.extend([1, 1])
-
-        add1 = sp.csr_matrix((n_inject, n_node))
-        add2 = sp.csr_matrix((n_node + n_inject, n_inject))
-        adj_attack = sp.vstack([adj, add1])
-        adj_attack = sp.hstack([adj_attack, add2])
-
-        adj_attack = adj_attack.tocoo()
-        adj_attack.row = np.hstack([adj_attack.row, new_edges_x])
-        adj_attack.col = np.hstack([adj_attack.col, new_edges_y])
-        adj_attack.data = np.hstack([adj_attack.data, new_data])
-        adj_attack = adj_attack.tocsr()
-
-        return adj_attack
+        return features_attack
 
     def update_features(self, model, adj, adj_attack, features, features_attack, pred_orig, att_orig, target_mask,
                         adj_norm_func):

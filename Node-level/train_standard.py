@@ -30,7 +30,7 @@ def get_args():
                         help='Dataset name')
 
     # Experimental Setup
-    parser.add_argument('--num_epochs', type=int, default=300, help='Training epoch')
+    parser.add_argument('--num_epochs', type=int, default=200, help='Training epoch')
 
     args = parser.parse_args()
     return args
@@ -38,17 +38,14 @@ def get_args():
 
 if __name__ == '__main__':
     args = get_args()
-    setup_seed(args.seed)  # make the experiment repeatable
-    print(f"Using device: {args.device}")
-    print(f"PyTorch Version: {torch.__version__}")
-    print('\n' + '=' * 36 + ' Setup logger ' + '=' * 36)
+    # setup_seed(args.seed)  # make the experiment repeatable
+
     for handler in logging.root.handlers[:]:
         logging.root.removeHandler(handler)
     logging_time = time.strftime('%m-%d_%H-%M', time.localtime())
     save_dir = os.path.join("standard_model", f"{args.dataset}")
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
-    print(f"Saving path: {save_dir}")
     logging.basicConfig(level=logging.INFO,
                         format='[%(asctime)s %(levelname)s]%(message)s',
                         datefmt='%Y-%m-%d %H:%M:%S',
@@ -58,6 +55,11 @@ if __name__ == '__main__':
     console.setFormatter(logging.Formatter(fmt='[%(asctime)s %(levelname)s]%(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
     logging.getLogger('').addHandler(console)
     logging.getLogger('matplotlib.font_manager').disabled = True
+
+    logging.info(f"Using device: {args.device}")
+    logging.info(f"PyTorch Version: {torch.__version__}")
+    logging.info(f"args: {args}")
+    logging.info(f"Saving path: {save_dir}")
 
     g, label, train_idx, valid_idx, test_idx, num_classes = load_dataset(args)
     features = g.ndata["feat"]
@@ -79,6 +81,28 @@ if __name__ == '__main__':
         optimizer = optim.Adam(standard_model.parameters(),
                                lr=1e-2,
                                weight_decay=0)
+    elif args.dataset in ['cora', 'citeseer']:
+        standard_model = GATNodeClassifier(in_feats=in_feats,
+                                           hid_dim=8,
+                                           n_classes=num_classes,
+                                           n_layers=1,
+                                           n_heads=[8],
+                                           feat_drop=0.6,
+                                           attn_drop=0.6).to(args.device)
+        optimizer = optim.Adam(standard_model.parameters(),
+                               lr=5e-3,
+                               weight_decay=5e-4)
+    elif args.dataset == 'pubmed':
+        standard_model = GATNodeClassifier(in_feats=in_feats,
+                                           hid_dim=8,
+                                           n_classes=num_classes,
+                                           n_layers=1,
+                                           n_heads=[8],
+                                           feat_drop=0.6,
+                                           attn_drop=0.6).to(args.device)
+        optimizer = optim.Adam(standard_model.parameters(),
+                               lr=1e-2,
+                               weight_decay=1e-3)
     else:
         standard_model = GATNodeClassifier(in_feats=in_feats,
                                            hid_dim=128,
@@ -88,11 +112,13 @@ if __name__ == '__main__':
                                            feat_drop=0.05,
                                            attn_drop=0).to(args.device)
         optimizer = optim.Adam(standard_model.parameters(),
-                               lr=1e-2,
+                               lr=1e-3,
                                weight_decay=0)
 
     total_params = sum(p.numel() for p in standard_model.parameters())
-    print(f"Total parameters: {total_params}")
+    logging.info(f"Total parameters: {total_params}")
+    logging.info(f"Model: {standard_model}")
+    logging.info(f"Optimizer: {optimizer}")
 
     std_trainer = StandardTrainer(standard_model, criterion, optimizer, args)
 
