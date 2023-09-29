@@ -43,6 +43,7 @@ def get_args():
     parser.add_argument('--lambda_2', type=float, default=1e-2)
     parser.add_argument('--lambda_3', type=float, default=5e-2)
     parser.add_argument('--K', type=int, default=10000)
+    parser.add_argument('--K_rho', type=int, default=10000)
 
     parser.add_argument('--save_path', type=str, default='./FGAI_checkpoints/', help='Checkpoints saving path')
 
@@ -200,6 +201,7 @@ if __name__ == '__main__':
                        feat_lim_min=features.min().item(),
                        feat_lim_max=features.max().item(),
                        loss=topK_overlap_loss,
+                       K=args.K_rho,
                        device=args.device)
     criterion = nn.CrossEntropyLoss()
 

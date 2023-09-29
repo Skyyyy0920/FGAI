@@ -54,6 +54,7 @@ class PGD(InjectionAttack):
                  feat_lim_max,
                  loss=F.nll_loss,
                  eval_metric=metric.eval_acc,
+                 K=5,
                  device='cpu',
                  early_stop=True,
                  verbose=True):
@@ -66,6 +67,7 @@ class PGD(InjectionAttack):
         self.feat_lim_max = feat_lim_max
         self.loss = loss
         self.eval_metric = eval_metric
+        self.K = K
         self.verbose = verbose
 
         if early_stop:
@@ -248,7 +250,7 @@ class PGD(InjectionAttack):
             if self.loss == F.nll_loss:
                 pred_loss = self.loss(pred[:n_total][target_mask], orig_labels[target_mask]).to(self.device)
             elif self.loss == topK_overlap_loss:
-                pred_loss = self.loss(att, att_orig, adj).to(self.device)
+                pred_loss = self.loss(att[:att_orig.shape[0]], att_orig, adj, self.K).to(self.device)
             else:
                 pred_loss = self.loss(pred[:n_total][target_mask], pred_orig[target_mask]).to(self.device)
 
