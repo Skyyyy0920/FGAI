@@ -159,3 +159,7 @@ if __name__ == '__main__':
     torch.save(feats_delta, os.path.join(save_dir, 'feats_delta.pth'))
     tensor_dict = {'new_outputs': new_outputs, 'new_graph_repr': new_graph_repr, 'new_att': new_att}
     torch.save(tensor_dict, os.path.join(save_dir, 'new_tensors.pth'))
+
+    fidelity_pos, fidelity_neg, TVD_pos, TVD_neg = compute_fidelity(vanilla_model, adj, features, label)
+    logging.info(f"fidelity_pos: {fidelity_pos}, fidelity_neg: {fidelity_neg}")
+    logging.info(f"TVD_pos: {TVD_pos}, TVD_neg: {TVD_neg}")

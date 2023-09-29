@@ -143,3 +143,7 @@ if __name__ == '__main__':
     JSD_score = JSD(orig_att, new_att)
     logging.info(f"JSD: {JSD_score}")
     logging.info(f"TVD: {TVD_score}")
+
+    fidelity_pos, fidelity_neg, TVD_pos, TVD_neg = compute_fidelity(GATv2, adj, features, label)
+    logging.info(f"fidelity_pos: {fidelity_pos}, fidelity_neg: {fidelity_neg}")
+    logging.info(f"TVD_pos: {TVD_pos}, TVD_neg: {TVD_neg}")

@@ -170,3 +170,31 @@ def evaluate_graph_level(model, criterion, test_loader, device):
 
     logging.info(f'Test Loss: {np.mean(loss_list):.4f} | Accuracy: {accuracy:.4f} | Precision: {precision:.4f}'
                  f' | Recall: {recall:.4f} | F1: {f1:.4f}')
+
+
+def compute_fidelity(model, adj, feats, labels):
+    num_nodes = adj.shape[0]
+    node_degrees = np.array(adj.sum(axis=1)).squeeze()
+
+    mask_imp = np.argsort(node_degrees)[:int(num_nodes * 0.6)]
+    mask_unimp = np.argsort(node_degrees)[int(num_nodes * 0.6):]
+    feats_mask_imp = feats.clone()
+    feats_mask_imp[mask_imp] = 0
+    feats_mask_unimp = feats.clone()
+    feats_mask_unimp[mask_unimp] = 0
+
+    outputs, _, _ = model(feats, adj)
+    outputs_imp, _, _ = model(feats_mask_imp, adj)
+    outputs_unimp, _, _ = model(feats_mask_unimp, adj)
+
+    pred = torch.argmax(outputs, dim=1)
+    pred_imp = torch.argmax(outputs_imp, dim=1)
+    pred_unimp = torch.argmax(outputs_unimp, dim=1)
+
+    fidelity_pos = (torch.sum(pred == labels) - torch.sum(pred_imp == labels)) / num_nodes
+    fidelity_neg = (torch.sum(pred == labels) - torch.sum(pred_unimp == labels)) / num_nodes
+
+    TVD_pos = (TVD(pred, labels) - TVD(pred_imp, labels)) / num_nodes
+    TVD_neg = (TVD(pred, labels) - TVD(pred_unimp, labels)) / num_nodes
+
+    return fidelity_pos, fidelity_neg, TVD_pos, TVD_neg
