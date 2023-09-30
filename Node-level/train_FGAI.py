@@ -39,9 +39,9 @@ def get_args():
     parser.add_argument('--epsilon', type=float, default=0.05)
     parser.add_argument('--n_epoch_attack', type=int, default=10)
 
-    parser.add_argument('--lambda_1', type=float, default=1e-1)
+    parser.add_argument('--lambda_1', type=float, default=5e-2)
     parser.add_argument('--lambda_2', type=float, default=1e-2)
-    parser.add_argument('--lambda_3', type=float, default=5e-2)
+    parser.add_argument('--lambda_3', type=float, default=2e-2)
     parser.add_argument('--K', type=int, default=10000)
     parser.add_argument('--K_rho', type=int, default=10000)
 
@@ -244,7 +244,7 @@ if __name__ == '__main__':
         new_outputs[:FGAI_outputs.shape[0]], new_graph_repr[:FGAI_graph_repr.shape[0]], new_att[:FGAI_att.shape[0]]
 
     TVD_score = TVD(orig_att, new_att) / len(orig_att)
-    JSD_score = JSD(FGAI_att, new_att)
+    JSD_score = JSD(FGAI_att, new_att) / len(orig_att)
     logging.info(f"JSD: {JSD_score}")
     logging.info(f"TVD: {TVD_score}")
 

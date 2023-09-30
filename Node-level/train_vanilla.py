@@ -1,7 +1,5 @@
-import logging
 import time
 import argparse
-import scipy.sparse as sp
 import torch.nn as nn
 import torch.optim as optim
 from utils import *
@@ -151,7 +149,7 @@ if __name__ == '__main__':
         new_outputs[:orig_outputs.shape[0]], new_graph_repr[:orig_graph_repr.shape[0]], new_att[:orig_att.shape[0]]
 
     TVD_score = TVD(orig_att, new_att) / len(orig_att)
-    JSD_score = JSD(orig_att, new_att)
+    JSD_score = JSD(orig_att, new_att) / len(orig_att)
     logging.info(f"JSD: {JSD_score}")
     logging.info(f"TVD: {TVD_score}")
 

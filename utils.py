@@ -137,13 +137,12 @@ def evaluate_node_level(model, criterion, features, adj, label, test_idx):
     model.eval()
     with torch.no_grad():
         test_outputs, graph_rep, _ = model(features, adj)
-        test_loss = criterion(test_outputs[test_idx], label[test_idx])
-        test_pred = torch.argmax(test_outputs[test_idx], dim=1)
-        test_accuracy = accuracy_score(label[test_idx].cpu(), test_pred.cpu())
-        test_f1_score = f1_score(label[test_idx].cpu(), test_pred.cpu(), average='micro')
+        loss = criterion(test_outputs[test_idx], label[test_idx])
+        pred = torch.argmax(test_outputs[test_idx], dim=1)
+        accuracy = accuracy_score(label[test_idx].cpu(), pred.cpu())
+        f1 = f1_score(label[test_idx].cpu(), pred.cpu(), average='micro')
 
-    logging.info(
-        f'Test Loss: {test_loss.item():.4f} | Accuracy: {test_accuracy:.4f} | F1 Score: {test_f1_score:.4f}')
+    logging.info(f'Test Loss: {loss.item():.4f} | Accuracy: {accuracy:.4f} | F1 Score: {f1:.4f}')
 
 
 def evaluate_graph_level(model, criterion, test_loader, device):
@@ -174,27 +173,26 @@ def evaluate_graph_level(model, criterion, test_loader, device):
 
 def compute_fidelity(model, adj, feats, labels):
     num_nodes = adj.shape[0]
-    node_degrees = np.array(adj.sum(axis=1)).squeeze()
 
-    mask_imp = np.argsort(node_degrees)[:int(num_nodes * 0.6)]
-    mask_unimp = np.argsort(node_degrees)[int(num_nodes * 0.6):]
-    feats_mask_imp = feats.clone()
-    feats_mask_imp[mask_imp] = 0
-    feats_mask_unimp = feats.clone()
-    feats_mask_unimp[mask_unimp] = 0
+    variances = torch.var(feats, dim=0)
+    imp_indices = torch.argsort(variances)[-int(feats.shape[1] * 0.7):]
+    unimp_indices = torch.argsort(variances)[:int(feats.shape[1] * 0.7)]
+    feats_imp = torch.zeros_like(feats)
+    feats_imp[:, imp_indices] = feats[:, imp_indices]
+    feats_unimp = torch.zeros_like(feats)
+    feats_unimp[:, unimp_indices] = feats[:, unimp_indices]
 
     outputs, _, _ = model(feats, adj)
-    outputs_imp, _, _ = model(feats_mask_imp, adj)
-    outputs_unimp, _, _ = model(feats_mask_unimp, adj)
-
+    outputs_wo_imp, _, _ = model(feats_unimp, adj)
+    outputs_wo_unimp, _, _ = model(feats_imp, adj)
     pred = torch.argmax(outputs, dim=1)
-    pred_imp = torch.argmax(outputs_imp, dim=1)
-    pred_unimp = torch.argmax(outputs_unimp, dim=1)
+    pred_wo_imp = torch.argmax(outputs_wo_imp, dim=1)
+    pred_wo_unimp = torch.argmax(outputs_wo_unimp, dim=1)
 
-    fidelity_pos = (torch.sum(pred == labels) - torch.sum(pred_imp == labels)) / num_nodes
-    fidelity_neg = (torch.sum(pred == labels) - torch.sum(pred_unimp == labels)) / num_nodes
+    fidelity_pos = (torch.sum(pred == labels) - torch.sum(pred_wo_imp == labels)) / num_nodes
+    fidelity_neg = (torch.sum(pred == labels) - torch.sum(pred_wo_unimp == labels)) / num_nodes
 
-    TVD_pos = (TVD(pred, labels) - TVD(pred_imp, labels)) / num_nodes
-    TVD_neg = (TVD(pred, labels) - TVD(pred_unimp, labels)) / num_nodes
+    TVD_pos = TVD(outputs_wo_imp, outputs) / num_nodes
+    TVD_neg = TVD(outputs_wo_unimp, outputs) / num_nodes
 
     return fidelity_pos, fidelity_neg, TVD_pos, TVD_neg
