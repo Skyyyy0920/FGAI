@@ -26,9 +26,12 @@ def get_args():
     parser.add_argument('--dataset',
                         type=str,
                         # default='ogbn-arxiv',
-                        # default='cora',
-                        default='pubmed',
-                        # default='citeseer',
+                        # default='ogbn-products',
+                        # default='ogbn-papers100M',
+                        # default='pubmed',
+                        # default='questions',
+                        default='amazon-ratings',
+                        # default='roman-empire',
                         help='Dataset name')
 
     # Experimental Setup
@@ -42,8 +45,8 @@ def get_args():
     parser.add_argument('--lambda_1', type=float, default=5e-2)
     parser.add_argument('--lambda_2', type=float, default=1e-2)
     parser.add_argument('--lambda_3', type=float, default=2e-2)
-    parser.add_argument('--K', type=int, default=10000)
-    parser.add_argument('--K_rho', type=int, default=10000)
+    parser.add_argument('--K', type=int, default=20000)
+    parser.add_argument('--K_rho', type=int, default=20000)
 
     parser.add_argument('--save_path', type=str, default='./FGAI_checkpoints/', help='Checkpoints saving path')
 
@@ -210,10 +213,11 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 6. Load pre-trained vanilla model
     # ==================================================================================================
-    vanilla_model.load_state_dict(torch.load(f'./vanilla_model/{args.dataset}/model_parameters.pth'))
+    tim = '_18-18'
+    vanilla_model.load_state_dict(torch.load(f'./vanilla_model/{args.dataset}{tim}/model_parameters.pth'))
     vanilla_model.eval()
 
-    tensor_dict = torch.load(f'./vanilla_model/{args.dataset}/orig_tensors.pth')
+    tensor_dict = torch.load(f'./vanilla_model/{args.dataset}{tim}/orig_tensors.pth')
     orig_outputs = tensor_dict['orig_outputs'].to(device=args.device)
     orig_graph_repr = tensor_dict['orig_graph_repr'].to(device=args.device)
     orig_att = tensor_dict['orig_att'].to(device=args.device)
@@ -236,18 +240,17 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 8. Evaluation
     # ==================================================================================================
-    adj_perturbed = sp.load_npz(f'./vanilla_model/{args.dataset}/adj_delta.npz')
-    feats_perturbed = torch.load(f'./vanilla_model/{args.dataset}/feats_delta.pth')
+    adj_perturbed = sp.load_npz(f'./vanilla_model/{args.dataset}{tim}/adj_delta.npz')
+    feats_perturbed = torch.load(f'./vanilla_model/{args.dataset}{tim}/feats_delta.pth')
 
     new_outputs, new_graph_repr, new_att = FGAI(torch.cat((features, feats_perturbed), dim=0), adj_perturbed)
     new_outputs, new_graph_repr, new_att = \
         new_outputs[:FGAI_outputs.shape[0]], new_graph_repr[:FGAI_graph_repr.shape[0]], new_att[:FGAI_att.shape[0]]
 
-    TVD_score = TVD(orig_att, new_att) / len(orig_att)
+    TVD_score = TVD(FGAI_att, new_att) / len(orig_att)
     JSD_score = JSD(FGAI_att, new_att) / len(orig_att)
     logging.info(f"JSD: {JSD_score}")
     logging.info(f"TVD: {TVD_score}")
 
-    fidelity_pos, fidelity_neg, TVD_pos, TVD_neg = compute_fidelity(FGAI, adj, features, label)
+    fidelity_pos, fidelity_neg = compute_fidelity(FGAI, adj, features, label, test_idx)
     logging.info(f"fidelity_pos: {fidelity_pos}, fidelity_neg: {fidelity_neg}")
-    logging.info(f"TVD_pos: {TVD_pos}, TVD_neg: {TVD_neg}")

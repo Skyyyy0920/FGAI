@@ -15,7 +15,6 @@ def get_args():
     parser = argparse.ArgumentParser(description="MTNet's args")
 
     # Operation environment
-    parser.add_argument('--seed', type=int, default=20010920, help='Random seed')
     parser.add_argument('--device', type=str, default=device, help='Running on which device')
 
     # Data
@@ -24,16 +23,17 @@ def get_args():
                         # default='ogbn-arxiv',
                         # default='ogbn-products',
                         # default='ogbn-papers100M',
-                        # default='cora',
-                        default='pubmed',
-                        # default='citeseer',
+                        # default='pubmed',
+                        # default='questions',
+                        default='amazon-ratings',
+                        # default='roman-empire',
                         help='Dataset name')
 
     # Experimental Setup
     parser.add_argument('--num_epochs', type=int, default=200, help='Training epoch')
     parser.add_argument('--n_inject_max', type=int, default=20)
-    parser.add_argument('--n_edge_max', type=int, default=20)
-    parser.add_argument('--epsilon', type=float, default=0.05)
+    parser.add_argument('--n_edge_max', type=int, default=40)
+    parser.add_argument('--epsilon', type=float, default=0.1)
     parser.add_argument('--n_epoch_attack', type=int, default=10)
 
     args = parser.parse_args()
@@ -42,12 +42,11 @@ def get_args():
 
 if __name__ == '__main__':
     args = get_args()
-    # setup_seed(args.seed)  # make the experiment repeatable
 
     for handler in logging.root.handlers[:]:
         logging.root.removeHandler(handler)
-    logging_time = time.strftime('%m-%d_%H-%M', time.localtime())
-    save_dir = os.path.join("vanilla_model", f"{args.dataset}")
+    logging_time = time.strftime('%H-%M', time.localtime())
+    save_dir = os.path.join("vanilla_model", f"{args.dataset}_{logging_time}")
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
     logging.basicConfig(level=logging.INFO,
@@ -158,6 +157,5 @@ if __name__ == '__main__':
     tensor_dict = {'new_outputs': new_outputs, 'new_graph_repr': new_graph_repr, 'new_att': new_att}
     torch.save(tensor_dict, os.path.join(save_dir, 'new_tensors.pth'))
 
-    fidelity_pos, fidelity_neg, TVD_pos, TVD_neg = compute_fidelity(vanilla_model, adj, features, label)
+    fidelity_pos, fidelity_neg = compute_fidelity(vanilla_model, adj, features, label, test_idx)
     logging.info(f"fidelity_pos: {fidelity_pos}, fidelity_neg: {fidelity_neg}")
-    logging.info(f"TVD_pos: {TVD_pos}, TVD_neg: {TVD_neg}")

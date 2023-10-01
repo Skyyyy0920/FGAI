@@ -171,12 +171,12 @@ def evaluate_graph_level(model, criterion, test_loader, device):
                  f' | Recall: {recall:.4f} | F1: {f1:.4f}')
 
 
-def compute_fidelity(model, adj, feats, labels):
-    num_nodes = adj.shape[0]
+def compute_fidelity(model, adj, feats, labels, test_idx):
+    model.eval()
 
     variances = torch.var(feats, dim=0)
-    imp_indices = torch.argsort(variances)[-int(feats.shape[1] * 0.7):]
-    unimp_indices = torch.argsort(variances)[:int(feats.shape[1] * 0.7)]
+    imp_indices = torch.argsort(variances)[-int(feats.shape[1] * 0.5):]
+    unimp_indices = torch.argsort(variances)[:int(feats.shape[1] * 0.5)]
     feats_imp = torch.zeros_like(feats)
     feats_imp[:, imp_indices] = feats[:, imp_indices]
     feats_unimp = torch.zeros_like(feats)
@@ -185,14 +185,13 @@ def compute_fidelity(model, adj, feats, labels):
     outputs, _, _ = model(feats, adj)
     outputs_wo_imp, _, _ = model(feats_unimp, adj)
     outputs_wo_unimp, _, _ = model(feats_imp, adj)
-    pred = torch.argmax(outputs, dim=1)
-    pred_wo_imp = torch.argmax(outputs_wo_imp, dim=1)
-    pred_wo_unimp = torch.argmax(outputs_wo_unimp, dim=1)
+    pred = torch.argmax(outputs, dim=1)[test_idx]
+    pred_wo_imp = torch.argmax(outputs_wo_imp, dim=1)[test_idx]
+    pred_wo_unimp = torch.argmax(outputs_wo_unimp, dim=1)[test_idx]
+    labels = labels[test_idx]
 
-    fidelity_pos = (torch.sum(pred == labels) - torch.sum(pred_wo_imp == labels)) / num_nodes
-    fidelity_neg = (torch.sum(pred == labels) - torch.sum(pred_wo_unimp == labels)) / num_nodes
+    corr_idx = torch.where(pred == labels)[0]
+    fidelity_pos = torch.sum(pred_wo_unimp[corr_idx] == labels[corr_idx]) / len(corr_idx)
+    fidelity_neg = torch.sum(pred_wo_imp[corr_idx] == labels[corr_idx]) / len(corr_idx)
 
-    TVD_pos = TVD(outputs_wo_imp, outputs) / num_nodes
-    TVD_neg = TVD(outputs_wo_unimp, outputs) / num_nodes
-
-    return fidelity_pos, fidelity_neg, TVD_pos, TVD_neg
+    return fidelity_pos, fidelity_neg

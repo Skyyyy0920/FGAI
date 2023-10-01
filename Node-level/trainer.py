@@ -71,14 +71,17 @@ class FGAITrainer:
             adj_rho, feats_rho = self.attacker_rho.attack(self.model, adj, features, train_idx, None)
             new_outputs_2, new_graph_repr_2, new_att_2 = self.model(torch.cat((features, feats_rho), dim=0), adj_rho)
             stability_of_explanation_loss = 0
-            for i in range(orig_att.shape[1]):
-                stability_of_explanation_loss += topK_overlap_loss(new_att_2[:, i][:orig_att.shape[0]], FGAI_att[:, i],
-                                                                   adj, self.K, 'l1')
+            stability_of_explanation_loss += topK_overlap_loss(new_att_2[:orig_att.shape[0]], FGAI_att, adj, self.K,
+                                                               'l1')
+            # for i in range(orig_att.shape[1]):
+            #     stability_of_explanation_loss += topK_overlap_loss(new_att_2[:, i][:orig_att.shape[0]],
+            #                                                        FGAI_att[:, i], adj, self.K, 'l1')
 
             # 4. Similarity of Explanation
             similarity_of_explanation_loss = 0
-            for i in range(orig_att.shape[1]):
-                similarity_of_explanation_loss += topK_overlap_loss(FGAI_att[:, i], orig_att[:, i], adj, self.K, 'l1')
+            similarity_of_explanation_loss += topK_overlap_loss(FGAI_att, orig_att, adj, self.K, 'l1')
+            # for i in range(orig_att.shape[1]):
+            #     similarity_of_explanation_loss += topK_overlap_loss(FGAI_att[:, i], orig_att[:, i], adj, self.K, 'l1')
 
             loss = closeness_of_prediction_loss + adversarial_loss * self.lambda_1 + \
                    stability_of_explanation_loss * self.lambda_2 + similarity_of_explanation_loss * self.lambda_3
@@ -100,7 +103,7 @@ class FGAITrainer:
                 current_patience = 0
             else:
                 current_patience += 1
-                if current_patience >= 5:
+                if current_patience >= 6:
                     logging.info(f"Early stopping at epoch {epoch + 1}...")
                     early_stopping_flag = True
 

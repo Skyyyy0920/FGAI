@@ -16,7 +16,6 @@ def get_args():
     parser = argparse.ArgumentParser(description="MTNet's args")
 
     # Operation environment
-    parser.add_argument('--seed', type=int, default=20010920, help='Random seed')
     parser.add_argument('--device', type=str, default=device, help='Running on which device')
 
     # Data
@@ -25,9 +24,10 @@ def get_args():
                         # default='ogbn-arxiv',
                         # default='ogbn-products',
                         # default='ogbn-papers100M',
-                        # default='cora',
-                        default='pubmed',
-                        # default='citeseer',
+                        # default='pubmed',
+                        # default='questions',
+                        default='amazon-ratings',
+                        # default='roman-empire',
                         help='Dataset name')
 
     # Experimental Setup
@@ -39,12 +39,11 @@ def get_args():
 
 if __name__ == '__main__':
     args = get_args()
-    # setup_seed(args.seed)  # make the experiment repeatable
 
     for handler in logging.root.handlers[:]:
         logging.root.removeHandler(handler)
-    logging_time = time.strftime('%m-%d_%H-%M', time.localtime())
-    save_dir = os.path.join("GATv2_checkpoints", f"{args.dataset}")
+    logging_time = time.strftime('%H-%M', time.localtime())
+    save_dir = os.path.join("GATv2_checkpoints", f"{args.dataset}_{logging_time}")
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
     logging.basicConfig(level=logging.INFO,
@@ -144,6 +143,5 @@ if __name__ == '__main__':
     logging.info(f"JSD: {JSD_score}")
     logging.info(f"TVD: {TVD_score}")
 
-    fidelity_pos, fidelity_neg, TVD_pos, TVD_neg = compute_fidelity(GATv2, adj, features, label)
+    fidelity_pos, fidelity_neg = compute_fidelity(GATv2, adj, features, label, test_idx)
     logging.info(f"fidelity_pos: {fidelity_pos}, fidelity_neg: {fidelity_neg}")
-    logging.info(f"TVD_pos: {TVD_pos}, TVD_neg: {TVD_neg}")
