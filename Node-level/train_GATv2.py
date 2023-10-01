@@ -103,13 +103,38 @@ if __name__ == '__main__':
         optimizer = optim.Adam(GATv2.parameters(),
                                lr=1e-2,
                                weight_decay=1e-3)
-    else:
+    elif args.dataset == 'amazon-ratings':
+        args.num_epochs = 400
         GATv2 = GATv2NodeClassifier(in_feats=in_feats,
                                     hid_dim=128,
                                     n_classes=num_classes,
-                                    n_layers=3,
-                                    n_heads=[4, 2, 1],
-                                    feat_drop=0.05,
+                                    n_layers=2,
+                                    n_heads=[8, 4],
+                                    feat_drop=0,
+                                    attn_drop=0).to(args.device)
+        optimizer = optim.Adam(GATv2.parameters(),
+                               lr=1e-3,
+                               weight_decay=0)
+    elif args.dataset == 'questions':
+        args.num_epochs = 150
+        GATv2 = GATv2NodeClassifier(in_feats=in_feats,
+                                    hid_dim=128,
+                                    n_classes=num_classes,
+                                    n_layers=2,
+                                    n_heads=[8, 4],
+                                    feat_drop=0,
+                                    attn_drop=0).to(args.device)
+        optimizer = optim.Adam(GATv2.parameters(),
+                               lr=1e-3,
+                               weight_decay=0)
+    else:  # default='roman-empire',
+        args.num_epochs = 400
+        GATv2 = GATv2NodeClassifier(in_feats=in_feats,
+                                    hid_dim=128,
+                                    n_classes=num_classes,
+                                    n_layers=2,
+                                    n_heads=[8, 4],
+                                    feat_drop=0,
                                     attn_drop=0).to(args.device)
         optimizer = optim.Adam(GATv2.parameters(),
                                lr=1e-3,

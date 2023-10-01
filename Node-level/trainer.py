@@ -46,6 +46,7 @@ class FGAITrainer:
         self.lambda_2 = args.lambda_2
         self.lambda_3 = args.lambda_3
         self.num_epochs = args.num_epochs
+        self.early_stopping = args.early_stopping
 
     def train(self, features, adj, label, idx_split, orig_outputs, orig_graph_repr, orig_att):
         train_idx, valid_idx, test_idx = idx_split
@@ -60,7 +61,6 @@ class FGAITrainer:
 
             # 1. Closeness of Prediction
             closeness_of_prediction_loss = TVD(FGAI_outputs, orig_outputs)
-            # closeness_of_prediction_loss = F.cross_entropy(FGAI_outputs[train_idx], label[train_idx])
 
             # 2. Constraint of Stability. Perturb δ(x) to ensure robustness of FGAI
             adj_delta, feats_delta = self.attacker_delta.attack(self.model, adj, features, train_idx, None)
@@ -103,7 +103,7 @@ class FGAITrainer:
                 current_patience = 0
             else:
                 current_patience += 1
-                if current_patience >= 6:
+                if current_patience >= self.early_stopping:
                     logging.info(f"Early stopping at epoch {epoch + 1}...")
                     early_stopping_flag = True
 
