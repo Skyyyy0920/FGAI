@@ -18,13 +18,6 @@ def zipdir(path, zipf, include_format):
                 zipf.write(filename, arcname)
 
 
-def setup_seed(seed):
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-
-
 def get_idx_split(dataset_len):
     idx = list(range(dataset_len))
     random.shuffle(idx)
@@ -133,7 +126,7 @@ def topK_overlap_loss(new_att, old_att, adj, K=2, metric='l1'):
     return loss
 
 
-def evaluate_node_level(model, criterion, features, adj, label, test_idx):
+def evaluate_node_level(model, criterion, features, adj, label, test_idx, roc_auc=True):
     model.eval()
     with torch.no_grad():
         test_outputs, graph_rep, _ = model(features, adj)
@@ -141,6 +134,9 @@ def evaluate_node_level(model, criterion, features, adj, label, test_idx):
         pred = torch.argmax(test_outputs[test_idx], dim=1)
         accuracy = accuracy_score(label[test_idx].cpu(), pred.cpu())
         f1 = f1_score(label[test_idx].cpu(), pred.cpu(), average='micro')
+        if roc_auc:
+            roc_auc_ = roc_auc_score(label[test_idx].cpu(), pred.cpu())
+            logging.info(f'ROC_AUC: {roc_auc_}')
 
     logging.info(f'Test Loss: {loss.item():.4f} | Accuracy: {accuracy:.4f} | F1 Score: {f1:.4f}')
 

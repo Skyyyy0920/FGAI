@@ -4,8 +4,7 @@ import torch.nn as nn
 import zipfile
 import argparse
 from pathlib import Path
-
-from models import GATNodeClassifier, GATv2NodeClassifier
+from models import GATNodeClassifier
 from utils import *
 from trainer import FGAITrainer
 from load_dataset import load_dataset
@@ -17,10 +16,9 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 def get_args():
-    parser = argparse.ArgumentParser(description="MTNet's args")
+    parser = argparse.ArgumentParser(description="FGAI's args")
 
     # Operation environment
-    parser.add_argument('--seed', type=int, default=20010920, help='Random seed')
     parser.add_argument('--device', type=str, default=device, help='Running on which device')
 
     # Data
@@ -30,9 +28,11 @@ def get_args():
                         # default='ogbn-products',
                         # default='ogbn-papers100M',
                         # default='pubmed',
-                        default='questions',
+                        # default='questions',
                         # default='amazon-ratings',
                         # default='roman-empire',
+                        default='amazon_photo',
+                        # default='amazon_cs',
                         help='Dataset name')
 
     # Experimental Setup
@@ -43,6 +43,14 @@ def get_args():
     parser.add_argument('--n_edge_max', type=int, default=20)
     parser.add_argument('--epsilon', type=float, default=0.05)
     parser.add_argument('--n_epoch_attack', type=int, default=10)
+
+    parser.add_argument('--hid_dim', type=int, default=8)
+    parser.add_argument('--n_heads', type=list, default=[8])
+    parser.add_argument('--n_layers', type=int, default=1)
+    parser.add_argument('--feat_drop', type=float, default=0.05)
+    parser.add_argument('--attn_drop', type=float, default=0.05)
+    parser.add_argument('--lr', type=float, default=1e-2)
+    parser.add_argument('--weight_decay', type=float, default=5e-4)
 
     parser.add_argument('--lambda_1', type=float, default=5e-2)
     parser.add_argument('--lambda_2', type=float, default=1e-2)
@@ -62,7 +70,10 @@ if __name__ == '__main__':
     # ==================================================================================================
     print('\n' + '=' * 36 + ' Get experiment args ' + '=' * 36)
     args = get_args()
-    # setup_seed(args.seed)  # make the experiment repeatable
+    load_optimized_hyperparameter_configurations = False
+    if load_optimized_hyperparameter_configurations:
+        with open(f"./optimized_hyperparameter_configurations/FGAI_{args.dataset}.yml", 'r') as file:
+            args = yaml.safe_load(file)
 
     # ==================================================================================================
     # 2. Setup logger
@@ -103,14 +114,8 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 4. Prepare data
     # ==================================================================================================
-    g, label, train_idx, valid_idx, test_idx, num_classes = load_dataset(args)
-    features = g.ndata["feat"]
+    adj, features, label, train_idx, valid_idx, test_idx, num_classes = load_dataset(args)
     in_feats = features.shape[1]
-    src, dst = g.edges()
-    num_nodes = g.number_of_nodes()
-    adj = sp.csr_matrix((np.ones(len(src)), (src.cpu().numpy(), dst.cpu().numpy())), shape=(num_nodes, num_nodes))
-    del g
-    logging.info(f"num_nodes: {num_nodes}")
 
     # ==================================================================================================
     # 5. Build models, define overall loss and optimizer
@@ -173,25 +178,6 @@ if __name__ == '__main__':
         args.num_epochs = 200
         args.early_stopping = 200
         vanilla_model = GATNodeClassifier(in_feats=in_feats,
-                                            hid_dim=128,
-                                            n_classes=num_classes,
-                                            n_layers=2,
-                                            n_heads=[8, 4],
-                                            feat_drop=0,
-                                            attn_drop=0).to(args.device)
-        FGAI = GATNodeClassifier(in_feats=in_feats,
-                                   hid_dim=128,
-                                   n_classes=num_classes,
-                                   n_layers=2,
-                                   n_heads=[8, 4],
-                                   feat_drop=0,
-                                   attn_drop=0).to(args.device)
-        optimizer = optim.Adam(FGAI.parameters(),
-                               lr=1e-3,
-                               weight_decay=5e-4)
-    elif args.dataset == 'questions':
-        # args.num_epochs = 150
-        vanilla_model = GATNodeClassifier(in_feats=in_feats,
                                           hid_dim=128,
                                           n_classes=num_classes,
                                           n_layers=2,
@@ -206,8 +192,66 @@ if __name__ == '__main__':
                                  feat_drop=0,
                                  attn_drop=0).to(args.device)
         optimizer = optim.Adam(FGAI.parameters(),
-                               lr=1e-2,
+                               lr=1e-3,
                                weight_decay=5e-4)
+    elif args.dataset == 'questions':
+        # args.num_epochs = 150
+        args.early_stopping = 200
+        vanilla_model = GATNodeClassifier(in_feats=in_feats,
+                                          hid_dim=64,
+                                          n_classes=num_classes,
+                                          n_layers=1,
+                                          n_heads=[8],
+                                          feat_drop=0,
+                                          attn_drop=0).to(args.device)
+        FGAI = GATNodeClassifier(in_feats=in_feats,
+                                 hid_dim=64,
+                                 n_classes=num_classes,
+                                 n_layers=1,
+                                 n_heads=[8],
+                                 feat_drop=0,
+                                 attn_drop=0).to(args.device)
+        optimizer = optim.Adam(vanilla_model.parameters(),
+                               lr=1e-3,
+                               weight_decay=0)
+    elif args.dataset == 'amazon_cs':
+        vanilla_model = GATNodeClassifier(in_feats=in_feats,
+                                          hid_dim=8,
+                                          n_classes=num_classes,
+                                          n_layers=1,
+                                          n_heads=[8],
+                                          feat_drop=0.6,
+                                          attn_drop=0.6).to(args.device)
+        FGAI = GATNodeClassifier(in_feats=in_feats,
+                                 hid_dim=8,
+                                 n_classes=num_classes,
+                                 n_layers=1,
+                                 n_heads=[8],
+                                 feat_drop=0.6,
+                                 attn_drop=0.6).to(args.device)
+        optimizer = optim.Adam(FGAI.parameters(),
+                               lr=1e-2,
+                               weight_decay=0)
+    elif args.dataset == 'amazon_photo':
+        args.num_epochs = 800
+        args.early_stopping = 800
+        vanilla_model = GATNodeClassifier(in_feats=in_feats,
+                                          hid_dim=args.hid_dim,
+                                          n_classes=num_classes,
+                                          n_layers=args.n_layers,
+                                          n_heads=args.n_heads,
+                                          feat_drop=args.feat_drop,
+                                          attn_drop=args.attn_drop).to(args.device)
+        FGAI = GATNodeClassifier(in_feats=in_feats,
+                                 hid_dim=args.hid_dim,
+                                 n_classes=num_classes,
+                                 n_layers=args.n_layers,
+                                 n_heads=args.n_heads,
+                                 feat_drop=args.feat_drop,
+                                 attn_drop=args.attn_drop).to(args.device)
+        optimizer = optim.Adam(FGAI.parameters(),
+                               lr=args.lr,
+                               weight_decay=args.weight_decay)
     else:  # default='roman-empire',
         # args.num_epochs = 400
         vanilla_model = GATNodeClassifier(in_feats=in_feats,
@@ -255,7 +299,7 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 6. Load pre-trained vanilla model
     # ==================================================================================================
-    tim = '_02-12'
+    tim = '_23-52'
     vanilla_model.load_state_dict(torch.load(f'./vanilla_model/{args.dataset}{tim}/model_parameters.pth'))
     vanilla_model.eval()
 
@@ -264,7 +308,7 @@ if __name__ == '__main__':
     orig_graph_repr = tensor_dict['orig_graph_repr'].to(device=args.device)
     orig_att = tensor_dict['orig_att'].to(device=args.device)
 
-    evaluate_node_level(vanilla_model, criterion, features, adj, label, test_idx)
+    evaluate_node_level(vanilla_model, criterion, features, adj, label, test_idx, num_classes == 2)
 
     # ==================================================================================================
     # 7. Train our FGAI
@@ -272,7 +316,7 @@ if __name__ == '__main__':
     idx_split = train_idx, valid_idx, test_idx
     FGAI_outputs, FGAI_graph_repr, FGAI_att = FGAI_trainer.train(features, adj, label, idx_split, orig_outputs,
                                                                  orig_graph_repr, orig_att)
-    evaluate_node_level(FGAI, criterion, features, adj, label, test_idx)
+    evaluate_node_level(FGAI, criterion, features, adj, label, test_idx, num_classes == 2)
 
     # ==================================================================================================
     # 7. Save FGAI

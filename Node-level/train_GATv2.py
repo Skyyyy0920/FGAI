@@ -1,4 +1,5 @@
 import time
+import yaml
 import argparse
 import scipy.sparse as sp
 import torch.nn as nn
@@ -13,7 +14,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 def get_args():
-    parser = argparse.ArgumentParser(description="MTNet's args")
+    parser = argparse.ArgumentParser(description="GATv2's args")
 
     # Operation environment
     parser.add_argument('--device', type=str, default=device, help='Running on which device')
@@ -25,9 +26,11 @@ def get_args():
                         # default='ogbn-products',
                         # default='ogbn-papers100M',
                         # default='pubmed',
-                        default='questions',
+                        # default='questions',
                         # default='amazon-ratings',
                         # default='roman-empire',
+                        default='amazon_photo',
+                        # default='amazon_cs',
                         help='Dataset name')
 
     # Experimental Setup
@@ -39,6 +42,10 @@ def get_args():
 
 if __name__ == '__main__':
     args = get_args()
+    load_optimized_hyperparameter_configurations = False
+    if load_optimized_hyperparameter_configurations:
+        with open(f"./optimized_hyperparameter_configurations/{args.dataset}.yml", 'r') as file:
+            args = yaml.safe_load(file)
 
     for handler in logging.root.handlers[:]:
         logging.root.removeHandler(handler)
@@ -61,13 +68,8 @@ if __name__ == '__main__':
     logging.info(f"args: {args}")
     logging.info(f"Saving path: {save_dir}")
 
-    g, label, train_idx, valid_idx, test_idx, num_classes = load_dataset(args)
-    features = g.ndata["feat"]
+    adj, features, label, train_idx, valid_idx, test_idx, num_classes = load_dataset(args)
     in_feats = features.shape[1]
-    src, dst = g.edges()
-    num_nodes = g.number_of_nodes()
-    adj = sp.csr_matrix((np.ones(len(src)), (src.cpu().numpy(), dst.cpu().numpy())), shape=(num_nodes, num_nodes))
-    del g
 
     criterion = nn.CrossEntropyLoss()
     if args.dataset == 'ogbn-arxiv':
@@ -127,6 +129,40 @@ if __name__ == '__main__':
         optimizer = optim.Adam(GATv2.parameters(),
                                lr=1e-3,
                                weight_decay=0)
+    elif args.dataset == 'roman-empire':
+        args.num_epochs = 400
+        GATv2 = GATv2NodeClassifier(in_feats=in_feats,
+                                    hid_dim=128,
+                                    n_classes=num_classes,
+                                    n_layers=2,
+                                    n_heads=[8, 4],
+                                    feat_drop=0,
+                                    attn_drop=0).to(args.device)
+        optimizer = optim.Adam(GATv2.parameters(),
+                               lr=1e-3,
+                               weight_decay=0)
+    elif args.dataset == 'amazon_cs':
+        GATv2 = GATv2NodeClassifier(in_feats=in_feats,
+                                    hid_dim=8,
+                                    n_classes=num_classes,
+                                    n_layers=1,
+                                    n_heads=[8],
+                                    feat_drop=0.6,
+                                    attn_drop=0.6).to(args.device)
+        optimizer = optim.Adam(GATv2.parameters(),
+                               lr=1e-2,
+                               weight_decay=0)
+    elif args.dataset == 'amazon_photo':
+        GATv2 = GATv2NodeClassifier(in_feats=in_feats,
+                                    hid_dim=8,
+                                    n_classes=num_classes,
+                                    n_layers=1,
+                                    n_heads=[8],
+                                    feat_drop=0.6,
+                                    attn_drop=0.6).to(args.device)
+        optimizer = optim.Adam(GATv2.parameters(),
+                               lr=1e-3,
+                               weight_decay=5e-4)
     else:  # default='roman-empire',
         args.num_epochs = 400
         GATv2 = GATv2NodeClassifier(in_feats=in_feats,
@@ -149,14 +185,15 @@ if __name__ == '__main__':
 
     orig_outputs, orig_graph_repr, orig_att = std_trainer.train(features, adj, label, train_idx, valid_idx)
 
-    evaluate_node_level(GATv2, criterion, features, adj, label, test_idx)
+    evaluate_node_level(GATv2, criterion, features, adj, label, test_idx, num_classes == 2)
 
     torch.save(GATv2.state_dict(), os.path.join(save_dir, 'model_parameters.pth'))
     tensor_dict = {'orig_outputs': orig_outputs, 'orig_graph_repr': orig_graph_repr, 'orig_att': orig_att}
     torch.save(tensor_dict, os.path.join(save_dir, 'tensors.pth'))
 
-    adj_perturbed = sp.load_npz(f'./vanilla_model/{args.dataset}/adj_delta.npz')
-    feats_perturbed = torch.load(f'./vanilla_model/{args.dataset}/feats_delta.pth')
+    tim = '_23-52'
+    adj_perturbed = sp.load_npz(f'./vanilla_model/{args.dataset}{tim}/adj_delta.npz')
+    feats_perturbed = torch.load(f'./vanilla_model/{args.dataset}{tim}/feats_delta.pth')
 
     GATv2.eval()
     new_outputs, new_graph_repr, new_att = GATv2(torch.cat((features, feats_perturbed), dim=0), adj_perturbed)

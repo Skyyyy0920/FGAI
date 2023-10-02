@@ -1,6 +1,10 @@
+import torch
+import logging
+import scipy.sparse as sp
 from dgl.data import *
 from ogb.nodeproppred import DglNodePropPredDataset
 from supplement_dataset import *
+from graphgallery.datasets import NPZDataset
 
 
 def load_dataset(args):
@@ -18,6 +22,10 @@ def load_dataset(args):
         split_idx = dataset.get_idx_split()
         train_idx, valid_idx, test_idx = split_idx["train"], split_idx["valid"], split_idx["test"]
         num_classes = dataset.num_classes
+        feats = g.ndata["feat"]
+        src, dst = g.edges()
+        num_nodes = g.number_of_nodes()
+        adj = sp.csr_matrix((np.ones(len(src)), (src.cpu().numpy(), dst.cpu().numpy())), shape=(num_nodes, num_nodes))
     elif args.dataset in ['cora', 'pubmed', 'citeseer']:
         if args.dataset == 'cora':
             dataset = CoraGraphDataset()
@@ -37,7 +45,10 @@ def load_dataset(args):
         print(f"Total edges after adding self-loop {g.number_of_edges()}")
         num_classes = dataset.num_classes
         train_idx, valid_idx, test_idx = g.ndata['train_mask'], g.ndata['val_mask'], g.ndata['test_mask']
-        label = g.ndata['label']
+        feats, label = g.ndata["feat"], g.ndata['label']
+        src, dst = g.edges()
+        num_nodes = g.number_of_nodes()
+        adj = sp.csr_matrix((np.ones(len(src)), (src.cpu().numpy(), dst.cpu().numpy())), shape=(num_nodes, num_nodes))
     elif args.dataset in ['questions', 'amazon-ratings', 'roman-empire']:
         if args.dataset == 'questions':
             dataset = QuestionsDataset()
@@ -52,8 +63,24 @@ def load_dataset(args):
         num_classes = dataset.num_classes
         tra_idx, val_idx, test_idx = g.ndata['train_mask'][:, 0], g.ndata['val_mask'][:, 0], g.ndata['test_mask'][:, 0]
         train_idx, valid_idx, test_idx = tra_idx.squeeze(), val_idx.squeeze(), test_idx.squeeze()
-        label = g.ndata['label']
+        feats, label = g.ndata["feat"], g.ndata['label']
+        src, dst = g.edges()
+        num_nodes = g.number_of_nodes()
+        adj = sp.csr_matrix((np.ones(len(src)), (src.cpu().numpy(), dst.cpu().numpy())), shape=(num_nodes, num_nodes))
+    elif args.dataset in ['amazon_photo', 'amazon_cs', '']:
+        dataset = NPZDataset(args.dataset, root="./dataset/", verbose=False)
+        g = dataset.graph
+        splits = dataset.split_nodes()
+        train_idx, valid_idx, test_idx = splits.train_nodes, splits.val_nodes, splits.test_nodes
+        train_idx, valid_idx, test_idx = torch.tensor(train_idx), torch.tensor(valid_idx), torch.tensor(test_idx)
+        feats, label = torch.tensor(g.x), torch.tensor(g.y, dtype=torch.int64)
+        num_classes = g.num_classes
+        adj = g.adj_matrix
+        adj = adj + adj.transpose()
+        num_nodes = g.num_nodes
     else:
         raise ValueError(f"Unknown dataset name: {args.dataset}")
 
-    return g.to(args.device), label.to(args.device), train_idx, valid_idx, test_idx, num_classes
+    del g
+    logging.info(f"num_nodes: {num_nodes}")
+    return adj, feats.to(args.device), label.to(args.device), train_idx, valid_idx, test_idx, num_classes

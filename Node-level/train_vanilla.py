@@ -1,4 +1,5 @@
 import time
+import yaml
 import argparse
 import torch.nn as nn
 import torch.optim as optim
@@ -12,7 +13,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 def get_args():
-    parser = argparse.ArgumentParser(description="MTNet's args")
+    parser = argparse.ArgumentParser(description="GAT's args")
 
     # Operation environment
     parser.add_argument('--device', type=str, default=device, help='Running on which device')
@@ -24,9 +25,11 @@ def get_args():
                         # default='ogbn-products',
                         # default='ogbn-papers100M',
                         # default='pubmed',
-                        default='questions',
+                        # default='questions',
                         # default='amazon-ratings',
                         # default='roman-empire',
+                        default='amazon_photo',
+                        # default='amazon_cs',
                         help='Dataset name')
 
     # Experimental Setup
@@ -42,6 +45,10 @@ def get_args():
 
 if __name__ == '__main__':
     args = get_args()
+    load_optimized_hyperparameter_configurations = False
+    if load_optimized_hyperparameter_configurations:
+        with open(f"./optimized_hyperparameter_configurations/{args.dataset}.yml", 'r') as file:
+            args = yaml.full_load(file)
 
     for handler in logging.root.handlers[:]:
         logging.root.removeHandler(handler)
@@ -64,14 +71,8 @@ if __name__ == '__main__':
     logging.info(f"args: {args}")
     logging.info(f"Saving path: {save_dir}")
 
-    g, label, train_idx, valid_idx, test_idx, num_classes = load_dataset(args)
-    features = g.ndata["feat"]
+    adj, features, label, train_idx, valid_idx, test_idx, num_classes = load_dataset(args)
     in_feats = features.shape[1]
-    src, dst = g.edges()
-    num_nodes = g.number_of_nodes()
-    adj = sp.csr_matrix((np.ones(len(src)), (src.cpu().numpy(), dst.cpu().numpy())), shape=(num_nodes, num_nodes))
-    del g
-    logging.info(f"num_nodes: {num_nodes}")
 
     criterion = nn.CrossEntropyLoss()
     if args.dataset == 'ogbn-arxiv':
@@ -120,18 +121,19 @@ if __name__ == '__main__':
                                lr=1e-3,
                                weight_decay=0)
     elif args.dataset == 'questions':
-        args.num_epochs = 150
+        args.num_epochs = 100
         vanilla_model = GATNodeClassifier(in_feats=in_feats,
-                                          hid_dim=128,
+                                          hid_dim=64,
                                           n_classes=num_classes,
-                                          n_layers=2,
-                                          n_heads=[8, 4],
+                                          n_layers=1,
+                                          n_heads=[8],
                                           feat_drop=0,
                                           attn_drop=0).to(args.device)
         optimizer = optim.Adam(vanilla_model.parameters(),
                                lr=1e-3,
                                weight_decay=0)
-    else:  # default='roman-empire',
+        criterion = nn.CrossEntropyLoss(weight=torch.tensor([1.0, 35.0]).to(device))
+    elif args.dataset == 'roman-empire':
         args.num_epochs = 400
         vanilla_model = GATNodeClassifier(in_feats=in_feats,
                                           hid_dim=128,
@@ -143,6 +145,28 @@ if __name__ == '__main__':
         optimizer = optim.Adam(vanilla_model.parameters(),
                                lr=1e-3,
                                weight_decay=0)
+    elif args.dataset == 'amazon_cs':
+        vanilla_model = GATNodeClassifier(in_feats=in_feats,
+                                          hid_dim=8,
+                                          n_classes=num_classes,
+                                          n_layers=1,
+                                          n_heads=[8],
+                                          feat_drop=0.6,
+                                          attn_drop=0.6).to(args.device)
+        optimizer = optim.Adam(vanilla_model.parameters(),
+                               lr=1e-2,
+                               weight_decay=0)
+    elif args.dataset == 'amazon_photo':
+        vanilla_model = GATNodeClassifier(in_feats=in_feats,
+                                          hid_dim=8,
+                                          n_classes=num_classes,
+                                          n_layers=1,
+                                          n_heads=[8],
+                                          feat_drop=0.6,
+                                          attn_drop=0.6).to(args.device)
+        optimizer = optim.Adam(vanilla_model.parameters(),
+                               lr=1e-3,
+                               weight_decay=5e-4)
 
     total_params = sum(p.numel() for p in vanilla_model.parameters())
     logging.info(f"Total parameters: {total_params}")
@@ -153,7 +177,7 @@ if __name__ == '__main__':
 
     orig_outputs, orig_graph_repr, orig_att = std_trainer.train(features, adj, label, train_idx, valid_idx)
 
-    evaluate_node_level(vanilla_model, criterion, features, adj, label, test_idx)
+    evaluate_node_level(vanilla_model, criterion, features, adj, label, test_idx, num_classes == 2)
 
     torch.save(vanilla_model.state_dict(), os.path.join(save_dir, 'model_parameters.pth'))
     tensor_dict = {'orig_outputs': orig_outputs, 'orig_graph_repr': orig_graph_repr, 'orig_att': orig_att}

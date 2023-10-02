@@ -27,6 +27,8 @@ class VanillaTrainer:
                 val_loss = self.criterion(val_outputs[valid_idx], label[valid_idx])
                 val_pred = torch.argmax(val_outputs[valid_idx], dim=1)
                 val_accuracy = accuracy_score(label[valid_idx].cpu(), val_pred.cpu())
+                # roc_auc = roc_auc_score(label[valid_idx].cpu(), val_pred.cpu())
+                # print(roc_auc)
 
             logging.info(f'Epoch [{epoch + 1}/{self.num_epochs}] | Train Loss: {loss.item():.4f} | '
                          f'Val Loss: {val_loss.item():.4f} | Val Accuracy: {val_accuracy:.4f}')

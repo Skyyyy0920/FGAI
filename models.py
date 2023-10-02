@@ -176,12 +176,15 @@ class GATv2NodeClassifier(nn.Module):
     def __init__(self, in_feats, hid_dim, n_classes, n_layers, n_heads, feat_drop, attn_drop):
         super(GATv2NodeClassifier, self).__init__()
         self.layers = nn.ModuleList()
-        self.layers.append(GATv2Conv(in_feats, hid_dim, n_heads[0], feat_drop, attn_drop, activation=F.elu))
+        self.layers.append(
+            GATv2Conv(in_feats, hid_dim, n_heads[0], feat_drop, attn_drop, activation=F.elu, allow_zero_in_degree=True))
         for i in range(0, n_layers - 1):
             in_hid_dim = hid_dim * n_heads[i]
-            self.layers.append(GATv2Conv(in_hid_dim, hid_dim, n_heads[i + 1], feat_drop, attn_drop, activation=F.elu))
+            self.layers.append(GATv2Conv(in_hid_dim, hid_dim, n_heads[i + 1], feat_drop, attn_drop, activation=F.elu,
+                                         allow_zero_in_degree=True))
         # self.out_layer = nn.Linear(hid_dim * n_heads[-1], n_classes)
-        self.out_layer = GATv2Conv(hid_dim * n_heads[-1], n_classes, 1, feat_drop, attn_drop, activation=F.elu)
+        self.out_layer = GATv2Conv(hid_dim * n_heads[-1], n_classes, 1, feat_drop, attn_drop, activation=F.elu,
+                                   allow_zero_in_degree=True)
         self.dropout = nn.Dropout(0.6)
 
     def forward(self, x, adj):
