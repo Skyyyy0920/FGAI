@@ -13,9 +13,6 @@ from dgl.nn.pytorch.utils import Identity
 from utils import k_shell_algorithm
 
 
-# from dgl.nn import GATConv
-
-
 class GATConv(nn.Module):
     def __init__(
             self,
@@ -253,6 +250,5 @@ class MultiTaskLoss(nn.Module):
     def forward(self, *losses):
         loss_sum = 0
         for i, loss in enumerate(losses):
-            # loss_sum += 0.5 / (self.params[i] ** 2) * loss + torch.log(1 + self.params[i] ** 2)
             loss_sum += 0.5 * torch.exp(-self.params[i]) * loss + self.params[i]
         return loss_sum

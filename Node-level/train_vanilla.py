@@ -71,6 +71,7 @@ if __name__ == '__main__':
     num_nodes = g.number_of_nodes()
     adj = sp.csr_matrix((np.ones(len(src)), (src.cpu().numpy(), dst.cpu().numpy())), shape=(num_nodes, num_nodes))
     del g
+    logging.info(f"num_nodes: {num_nodes}")
 
     criterion = nn.CrossEntropyLoss()
     if args.dataset == 'ogbn-arxiv':

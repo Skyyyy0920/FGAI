@@ -25,8 +25,8 @@ def get_args():
                         # default='ogbn-products',
                         # default='ogbn-papers100M',
                         # default='pubmed',
-                        # default='questions',
-                        default='amazon-ratings',
+                        default='questions',
+                        # default='amazon-ratings',
                         # default='roman-empire',
                         help='Dataset name')
 

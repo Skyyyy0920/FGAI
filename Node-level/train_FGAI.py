@@ -13,7 +13,7 @@ from attackers import PGD
 import torch.optim as optim
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-device = 'cpu'
+# device = 'cpu'
 
 
 def get_args():
@@ -30,8 +30,8 @@ def get_args():
                         # default='ogbn-products',
                         # default='ogbn-papers100M',
                         # default='pubmed',
-                        # default='questions',
-                        default='amazon-ratings',
+                        default='questions',
+                        # default='amazon-ratings',
                         # default='roman-empire',
                         help='Dataset name')
 
@@ -172,14 +172,14 @@ if __name__ == '__main__':
     elif args.dataset == 'amazon-ratings':
         args.num_epochs = 200
         args.early_stopping = 200
-        vanilla_model = GATv2NodeClassifier(in_feats=in_feats,
+        vanilla_model = GATNodeClassifier(in_feats=in_feats,
                                             hid_dim=128,
                                             n_classes=num_classes,
                                             n_layers=2,
                                             n_heads=[8, 4],
                                             feat_drop=0,
                                             attn_drop=0).to(args.device)
-        FGAI = GATv2NodeClassifier(in_feats=in_feats,
+        FGAI = GATNodeClassifier(in_feats=in_feats,
                                    hid_dim=128,
                                    n_classes=num_classes,
                                    n_layers=2,
@@ -255,7 +255,7 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 6. Load pre-trained vanilla model
     # ==================================================================================================
-    tim = '_23-41'
+    tim = '_02-12'
     vanilla_model.load_state_dict(torch.load(f'./vanilla_model/{args.dataset}{tim}/model_parameters.pth'))
     vanilla_model.eval()
 
@@ -283,7 +283,7 @@ if __name__ == '__main__':
     # 8. Evaluation
     # ==================================================================================================
     adj_perturbed = sp.load_npz(f'./vanilla_model/{args.dataset}{tim}/adj_delta.npz')
-    feats_perturbed = torch.load(f'./vanilla_model/{args.dataset}{tim}/feats_delta.pth')
+    feats_perturbed = torch.load(f'./vanilla_model/{args.dataset}{tim}/feats_delta.pth').to(features.device)
 
     new_outputs, new_graph_repr, new_att = FGAI(torch.cat((features, feats_perturbed), dim=0), adj_perturbed)
     new_outputs, new_graph_repr, new_att = \
