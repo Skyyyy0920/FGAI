@@ -8,16 +8,12 @@ from utils import *
 from models import GATv2NodeClassifier
 from load_dataset import load_dataset
 from trainer import VanillaTrainer
-from attackers import PGD
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 def get_args():
     parser = argparse.ArgumentParser(description="GATv2's args")
-
-    # Operation environment
-    parser.add_argument('--device', type=str, default=device, help='Running on which device')
 
     # Data
     parser.add_argument('--dataset',
@@ -35,6 +31,18 @@ def get_args():
 
     # Experimental Setup
     parser.add_argument('--num_epochs', type=int, default=200, help='Training epoch')
+    parser.add_argument('--n_inject_max', type=int, default=20)
+    parser.add_argument('--n_edge_max', type=int, default=40)
+    parser.add_argument('--epsilon', type=float, default=0.1)
+    parser.add_argument('--n_epoch_attack', type=int, default=10)
+
+    parser.add_argument('--hid_dim', type=int, default=8)
+    parser.add_argument('--n_heads', type=list, default=[8])
+    parser.add_argument('--n_layers', type=int, default=1)
+    parser.add_argument('--feat_drop', type=float, default=0.05)
+    parser.add_argument('--attn_drop', type=float, default=0.05)
+    parser.add_argument('--lr', type=float, default=1e-2)
+    parser.add_argument('--weight_decay', type=float, default=5e-4)
 
     args = parser.parse_args()
     return args
@@ -42,10 +50,12 @@ def get_args():
 
 if __name__ == '__main__':
     args = get_args()
-    load_optimized_hyperparameter_configurations = False
+    load_optimized_hyperparameter_configurations = True
     if load_optimized_hyperparameter_configurations:
         with open(f"./optimized_hyperparameter_configurations/{args.dataset}.yml", 'r') as file:
             args = yaml.safe_load(file)
+        args = argparse.Namespace(**args)
+    args.device = device
 
     for handler in logging.root.handlers[:]:
         logging.root.removeHandler(handler)
@@ -72,109 +82,16 @@ if __name__ == '__main__':
     in_feats = features.shape[1]
 
     criterion = nn.CrossEntropyLoss()
-    if args.dataset == 'ogbn-arxiv':
-        GATv2 = GATv2NodeClassifier(in_feats=in_feats,
-                                    hid_dim=128,
-                                    n_classes=num_classes,
-                                    n_layers=3,
-                                    n_heads=[4, 2, 1],
-                                    feat_drop=0.05,
-                                    attn_drop=0).to(args.device)
-        optimizer = optim.Adam(GATv2.parameters(),
-                               lr=1e-2,
-                               weight_decay=0)
-    elif args.dataset in ['cora', 'citeseer']:
-        GATv2 = GATv2NodeClassifier(in_feats=in_feats,
-                                    hid_dim=8,
-                                    n_classes=num_classes,
-                                    n_layers=1,
-                                    n_heads=[8],
-                                    feat_drop=0.6,
-                                    attn_drop=0.6).to(args.device)
-        optimizer = optim.Adam(GATv2.parameters(),
-                               lr=5e-3,
-                               weight_decay=5e-4)
-    elif args.dataset == 'pubmed':
-        GATv2 = GATv2NodeClassifier(in_feats=in_feats,
-                                    hid_dim=8,
-                                    n_classes=num_classes,
-                                    n_layers=1,
-                                    n_heads=[8],
-                                    feat_drop=0.6,
-                                    attn_drop=0.6).to(args.device)
-        optimizer = optim.Adam(GATv2.parameters(),
-                               lr=1e-2,
-                               weight_decay=1e-3)
-    elif args.dataset == 'amazon-ratings':
-        args.num_epochs = 400
-        GATv2 = GATv2NodeClassifier(in_feats=in_feats,
-                                    hid_dim=128,
-                                    n_classes=num_classes,
-                                    n_layers=2,
-                                    n_heads=[8, 4],
-                                    feat_drop=0,
-                                    attn_drop=0).to(args.device)
-        optimizer = optim.Adam(GATv2.parameters(),
-                               lr=1e-3,
-                               weight_decay=0)
-    elif args.dataset == 'questions':
-        args.num_epochs = 150
-        GATv2 = GATv2NodeClassifier(in_feats=in_feats,
-                                    hid_dim=128,
-                                    n_classes=num_classes,
-                                    n_layers=2,
-                                    n_heads=[8, 4],
-                                    feat_drop=0,
-                                    attn_drop=0).to(args.device)
-        optimizer = optim.Adam(GATv2.parameters(),
-                               lr=1e-3,
-                               weight_decay=0)
-    elif args.dataset == 'roman-empire':
-        args.num_epochs = 400
-        GATv2 = GATv2NodeClassifier(in_feats=in_feats,
-                                    hid_dim=128,
-                                    n_classes=num_classes,
-                                    n_layers=2,
-                                    n_heads=[8, 4],
-                                    feat_drop=0,
-                                    attn_drop=0).to(args.device)
-        optimizer = optim.Adam(GATv2.parameters(),
-                               lr=1e-3,
-                               weight_decay=0)
-    elif args.dataset == 'amazon_cs':
-        GATv2 = GATv2NodeClassifier(in_feats=in_feats,
-                                    hid_dim=8,
-                                    n_classes=num_classes,
-                                    n_layers=1,
-                                    n_heads=[8],
-                                    feat_drop=0.6,
-                                    attn_drop=0.6).to(args.device)
-        optimizer = optim.Adam(GATv2.parameters(),
-                               lr=1e-2,
-                               weight_decay=0)
-    elif args.dataset == 'amazon_photo':
-        GATv2 = GATv2NodeClassifier(in_feats=in_feats,
-                                    hid_dim=8,
-                                    n_classes=num_classes,
-                                    n_layers=1,
-                                    n_heads=[8],
-                                    feat_drop=0.6,
-                                    attn_drop=0.6).to(args.device)
-        optimizer = optim.Adam(GATv2.parameters(),
-                               lr=1e-3,
-                               weight_decay=5e-4)
-    else:  # default='roman-empire',
-        args.num_epochs = 400
-        GATv2 = GATv2NodeClassifier(in_feats=in_feats,
-                                    hid_dim=128,
-                                    n_classes=num_classes,
-                                    n_layers=2,
-                                    n_heads=[8, 4],
-                                    feat_drop=0,
-                                    attn_drop=0).to(args.device)
-        optimizer = optim.Adam(GATv2.parameters(),
-                               lr=1e-3,
-                               weight_decay=0)
+    GATv2 = GATv2NodeClassifier(in_feats=in_feats,
+                                hid_dim=args.hid_dim,
+                                n_classes=num_classes,
+                                n_layers=args.n_layers,
+                                n_heads=args.n_heads,
+                                feat_drop=args.feat_drop,
+                                attn_drop=args.attn_drop).to(args.device)
+    optimizer = optim.Adam(GATv2.parameters(),
+                           lr=args.lr,
+                           weight_decay=args.weight_decay)
 
     total_params = sum(p.numel() for p in GATv2.parameters())
     logging.info(f"Total parameters: {total_params}")
