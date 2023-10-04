@@ -18,17 +18,6 @@ def zipdir(path, zipf, include_format):
                 zipf.write(filename, arcname)
 
 
-def get_idx_split(dataset_len):
-    idx = list(range(dataset_len))
-    random.shuffle(idx)
-
-    split_point_1 = int(dataset_len * 0.6)
-    split_point_2 = int(dataset_len * 0.8)
-
-    split_idx = {'train': idx[:split_point_1], 'valid': idx[split_point_1:split_point_2], 'test': idx[split_point_2:]}
-    return split_idx
-
-
 def k_shell_algorithm(adj_matrix):
     flag = 1
     if isinstance(adj_matrix, torch.Tensor):

@@ -4,6 +4,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import dgl
+import time
+from copy import deepcopy
 import dgl.function as fn
 from dgl.nn import GATv2Conv
 from dgl.base import DGLError
@@ -11,6 +13,9 @@ from dgl.ops import edge_softmax
 from dgl.utils import expand_as_pair
 from dgl.nn.pytorch.utils import Identity
 from utils import k_shell_algorithm
+import torch.optim as optim
+from deeprobust.graph.utils import accuracy
+from deeprobust.graph.defense.pgd import PGD, prox_operators
 
 
 class GATConv(nn.Module):
@@ -242,6 +247,236 @@ class GATGraphClassifier(nn.Module):
             raise ValueError(f"Unknown readout type: {self.readout_type}")
 
         return graph_representation, graph_representation, attention
+
+
+class ProGNN:
+    def __init__(self, model, adj, args, device, debug=True):
+        self.device = device
+        self.epochs = args.num_epochs
+        self.outer_steps = 1
+        self.inner_steps = 2
+        self.best_val_acc = 0
+        self.best_val_loss = 10
+        self.best_graph = None
+        self.weights = None
+        self.estimator = None
+        self.alpha = 5e-4  # weight of l1 norm
+        self.beta = 1.5  # weight of nuclear norm
+        self.gamma = 1  # weight of l2 norm
+        self.lambda_ = 0  # weight of feature smoothing
+        self.phi = 0  # weight of symmetric loss
+        self.model = model.to(device)
+        self.debug = debug
+        self.optimizer = optim.Adam(self.model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+        self.estimator = EstimateAdj(adj, device=device).to(device)
+        self.optimizer_adj = optim.SGD(self.estimator.parameters(), momentum=0.9, lr=0.01)
+
+        self.optimizer_l1 = PGD(self.estimator.parameters(), proxs=[prox_operators.prox_l1],
+                                lr=0.01, alphas=[self.alpha])
+        self.optimizer_nuclear = PGD(self.estimator.parameters(), proxs=[prox_operators.prox_nuclear],
+                                     lr=0.01, alphas=[self.beta])
+
+    def fit(self, features, adj, labels, train_idx, valid_idx, **kwargs):
+        t_total = time.time()
+        for epoch in range(self.epochs):
+            for i in range(int(self.outer_steps)):
+                self.train_adj(epoch, features, adj, labels, train_idx, valid_idx)
+            for i in range(int(self.inner_steps)):
+                self.train_gcn(epoch, features, self.estimator.estimated_adj, labels, train_idx, valid_idx)
+
+        print("Optimization Finished!")
+        print("Total time elapsed: {:.4f}s".format(time.time() - t_total))
+
+        print("picking the best model according to validation performance")
+        self.model.load_state_dict(self.weights)
+
+    def train_gcn(self, epoch, features, adj, labels, train_idx, idx_val):
+        estimator = self.estimator
+        adj = estimator.normalize()
+
+        t = time.time()
+        self.model.train()
+        self.optimizer.zero_grad()
+
+        output = self.model(features, adj)
+        loss_train = F.cross_entropy(output[train_idx], labels[train_idx])
+        acc_train = accuracy(output[train_idx], labels[train_idx])
+        loss_train.backward()
+        self.optimizer.step()
+
+        self.model.eval()
+        output = self.model(features, adj)
+
+        loss_val = F.cross_entropy(output[idx_val], labels[idx_val])
+        acc_val = accuracy(output[idx_val], labels[idx_val])
+
+        if acc_val > self.best_val_acc:
+            self.best_val_acc = acc_val
+            self.best_graph = adj.detach()
+            self.weights = deepcopy(self.model.state_dict())
+            if self.debug:
+                print('\t=== saving current graph/gcn, best_val_acc: %s' % self.best_val_acc.item())
+
+        if loss_val < self.best_val_loss:
+            self.best_val_loss = loss_val
+            self.best_graph = adj.detach()
+            self.weights = deepcopy(self.model.state_dict())
+            if self.debug:
+                print(f'\t=== saving current graph/gcn, best_val_loss: %s' % self.best_val_loss.item())
+
+        if self.debug:
+            if epoch % 1 == 0:
+                print('Epoch: {:04d}'.format(epoch + 1),
+                      'loss_train: {:.4f}'.format(loss_train.item()),
+                      'acc_train: {:.4f}'.format(acc_train.item()),
+                      'loss_val: {:.4f}'.format(loss_val.item()),
+                      'acc_val: {:.4f}'.format(acc_val.item()),
+                      'time: {:.4f}s'.format(time.time() - t))
+
+    def train_adj(self, epoch, features, adj, labels, idx_train, idx_val):
+        estimator = self.estimator
+        if self.debug:
+            print("\n=== train_adj ===")
+        t = time.time()
+        estimator.train()
+        self.optimizer_adj.zero_grad()
+
+        loss_l1 = torch.norm(estimator.estimated_adj, 1)
+        loss_fro = torch.norm(estimator.estimated_adj - adj, p='fro')
+        normalized_adj = estimator.normalize()
+
+        if self.lambda_:
+            loss_smooth_feat = self.feature_smoothing(estimator.estimated_adj, features)
+        else:
+            loss_smooth_feat = 0 * loss_l1
+
+        output = self.model(features, normalized_adj)
+        loss_gcn = F.nll_loss(output[idx_train], labels[idx_train])
+        acc_train = accuracy(output[idx_train], labels[idx_train])
+
+        loss_symmetric = torch.norm(estimator.estimated_adj - estimator.estimated_adj.t(), p="fro")
+
+        loss_diffiential = loss_fro + self.gamma * loss_gcn + self.lambda_ * loss_smooth_feat + self.phi * loss_symmetric
+
+        loss_diffiential.backward()
+
+        self.optimizer_adj.step()
+        loss_nuclear = 0 * loss_fro
+        if self.beta != 0:
+            self.optimizer_nuclear.zero_grad()
+            self.optimizer_nuclear.step()
+            loss_nuclear = prox_operators.nuclear_norm
+
+        self.optimizer_l1.zero_grad()
+        self.optimizer_l1.step()
+
+        total_loss = loss_fro \
+                     + self.gamma * loss_gcn \
+                     + self.alpha * loss_l1 \
+                     + self.beta * loss_nuclear \
+                     + self.phi * loss_symmetric
+
+        estimator.estimated_adj.data.copy_(torch.clamp(
+            estimator.estimated_adj.data, min=0, max=1))
+
+        # Evaluate validation set performance separately,
+        # deactivates dropout during validation run.
+        self.model.eval()
+        normalized_adj = estimator.normalize()
+        output = self.model(features, normalized_adj)
+
+        loss_val = F.nll_loss(output[idx_val], labels[idx_val])
+        acc_val = accuracy(output[idx_val], labels[idx_val])
+        print('Epoch: {:04d}'.format(epoch + 1),
+              'acc_train: {:.4f}'.format(acc_train.item()),
+              'loss_val: {:.4f}'.format(loss_val.item()),
+              'acc_val: {:.4f}'.format(acc_val.item()),
+              'time: {:.4f}s'.format(time.time() - t))
+
+        if acc_val > self.best_val_acc:
+            self.best_val_acc = acc_val
+            self.best_graph = normalized_adj.detach()
+            self.weights = deepcopy(self.model.state_dict())
+            if self.debug:
+                print(f'\t=== saving current graph/gcn, best_val_acc: %s' % self.best_val_acc.item())
+
+        if loss_val < self.best_val_loss:
+            self.best_val_loss = loss_val
+            self.best_graph = normalized_adj.detach()
+            self.weights = deepcopy(self.model.state_dict())
+            if self.debug:
+                print(f'\t=== saving current graph/gcn, best_val_loss: %s' % self.best_val_loss.item())
+
+        if self.debug:
+            if epoch % 1 == 0:
+                print('Epoch: {:04d}'.format(epoch + 1),
+                      'loss_fro: {:.4f}'.format(loss_fro.item()),
+                      'loss_gcn: {:.4f}'.format(loss_gcn.item()),
+                      'loss_feat: {:.4f}'.format(loss_smooth_feat.item()),
+                      'loss_symmetric: {:.4f}'.format(loss_symmetric.item()),
+                      'delta_l1_norm: {:.4f}'.format(torch.norm(estimator.estimated_adj - adj, 1).item()),
+                      'loss_l1: {:.4f}'.format(loss_l1.item()),
+                      'loss_total: {:.4f}'.format(total_loss.item()),
+                      'loss_nuclear: {:.4f}'.format(loss_nuclear.item()))
+
+    def feature_smoothing(self, adj, X):
+        adj = (adj.t() + adj) / 2
+        rowsum = adj.sum(1)
+        r_inv = rowsum.flatten()
+        D = torch.diag(r_inv)
+        L = D - adj
+
+        r_inv = r_inv + 1e-3
+        r_inv = r_inv.pow(-1 / 2).flatten()
+        r_inv[torch.isinf(r_inv)] = 0.
+        r_mat_inv = torch.diag(r_inv)
+        # L = r_mat_inv @ L
+        L = r_mat_inv @ L @ r_mat_inv
+
+        XLXT = torch.matmul(torch.matmul(X.t(), L), X)
+        loss_smooth_feat = torch.trace(XLXT)
+        return loss_smooth_feat
+
+
+class EstimateAdj(nn.Module):
+    """Provide a pytorch parameter matrix for estimated
+    adjacency matrix and corresponding operations.
+    """
+
+    def __init__(self, adj, symmetric=False, device='cpu'):
+        super(EstimateAdj, self).__init__()
+        n = len(adj)
+        self.estimated_adj = nn.Parameter(torch.FloatTensor(n, n))
+        self._init_estimation(adj)
+        self.symmetric = symmetric
+        self.device = device
+
+    def _init_estimation(self, adj):
+        with torch.no_grad():
+            n = len(adj)
+            self.estimated_adj.data.copy_(adj)
+
+    def forward(self):
+        return self.estimated_adj
+
+    def normalize(self):
+
+        if self.symmetric:
+            adj = (self.estimated_adj + self.estimated_adj.t()) / 2
+        else:
+            adj = self.estimated_adj
+
+        normalized_adj = self._normalize(adj + torch.eye(adj.shape[0]).to(self.device))
+        return normalized_adj
+
+    def _normalize(self, mx):
+        rowsum = mx.sum(1)
+        r_inv = rowsum.pow(-1 / 2).flatten()
+        r_inv[torch.isinf(r_inv)] = 0.
+        r_mat_inv = torch.diag(r_inv)
+        mx = r_mat_inv @ mx
+        mx = mx @ r_mat_inv
+        return mx
 
 
 class MultiTaskLoss(nn.Module):

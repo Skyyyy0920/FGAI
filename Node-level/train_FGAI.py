@@ -13,8 +13,7 @@ import torch.optim as optim
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-
-# device = 'cpu'
+device = 'cpu'
 
 
 def get_args():
@@ -30,8 +29,10 @@ def get_args():
                         # default='questions',
                         # default='amazon-ratings',
                         # default='roman-empire',
-                        default='amazon_photo',
+                        # default='amazon_photo',
                         # default='amazon_cs',
+                        # default='coauthor_cs',
+                        default='coauthor_phy',
                         help='Dataset name')
 
     # Experimental Setup
@@ -164,7 +165,7 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 6. Load pre-trained vanilla model
     # ==================================================================================================
-    tim = '_23-50'
+    tim = '_10-32'
     vanilla_model.load_state_dict(torch.load(f'./vanilla_model/{args.dataset}{tim}/model_parameters.pth'))
     vanilla_model.eval()
 

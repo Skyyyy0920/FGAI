@@ -2,18 +2,17 @@ import time
 import yaml
 import argparse
 import torch.nn as nn
-import torch.optim as optim
 from utils import *
-from models import GATNodeClassifier
+from models import ProGNN, GATNodeClassifier
 from load_dataset import load_dataset
-from trainer import VanillaTrainer
-from attackers import PGD
+from deeprobust.graph.utils import preprocess
+from deeprobust.graph.global_attack import Random
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 def get_args():
-    parser = argparse.ArgumentParser(description="GAT's args")
+    parser = argparse.ArgumentParser(description="ProGNN's args")
 
     # Data
     parser.add_argument('--dataset',
@@ -21,14 +20,12 @@ def get_args():
                         # default='ogbn-arxiv',
                         # default='ogbn-products',
                         # default='ogbn-papers100M',
-                        # default='pubmed',
+                        default='pubmed',
                         # default='questions',
                         # default='amazon-ratings',
                         # default='roman-empire',
                         # default='amazon_photo',
                         # default='amazon_cs',
-                        # default='coauthor_cs',
-                        default='coauthor_phy',
                         help='Dataset name')
 
     # Experimental Setup
@@ -55,14 +52,15 @@ if __name__ == '__main__':
     load_optimized_hyperparameter_configurations = True
     if load_optimized_hyperparameter_configurations:
         with open(f"./optimized_hyperparameter_configurations/{args.dataset}.yml", 'r') as file:
-            args = yaml.full_load(file)
+            args = yaml.safe_load(file)
         args = argparse.Namespace(**args)
     args.device = device
+    args.ptb_rate = 0.05
 
     for handler in logging.root.handlers[:]:
         logging.root.removeHandler(handler)
     logging_time = time.strftime('%H-%M', time.localtime())
-    save_dir = os.path.join("vanilla_model", f"{args.dataset}_{logging_time}")
+    save_dir = os.path.join("ProGNN_checkpoints", f"{args.dataset}_{logging_time}")
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
     logging.basicConfig(level=logging.INFO,
@@ -81,7 +79,15 @@ if __name__ == '__main__':
     logging.info(f"Saving path: {save_dir}")
 
     adj, features, label, train_idx, valid_idx, test_idx, num_classes = load_dataset(args)
+    adj.data[adj.data > 1] = 1
     in_feats = features.shape[1]
+
+    attacker = Random()
+    n_perturbations = int(args.ptb_rate * (adj.sum() // 2))
+    attacker.attack(adj, n_perturbations, type='add')
+    perturbed_adj = attacker.modified_adj
+    perturbed_adj, features, labels = preprocess(perturbed_adj, features.detach().cpu(), label.detach().cpu().numpy(),
+                                                 preprocess_adj=False, device=device)
 
     criterion = nn.CrossEntropyLoss()
     vanilla_model = GATNodeClassifier(in_feats=in_feats,
@@ -90,37 +96,25 @@ if __name__ == '__main__':
                                       n_layers=args.n_layers,
                                       n_heads=args.n_heads,
                                       feat_drop=args.feat_drop,
-                                      attn_drop=args.attn_drop).to(args.device)
-    optimizer = optim.Adam(vanilla_model.parameters(),
-                           lr=args.lr,
-                           weight_decay=args.weight_decay)
+                                      attn_drop=args.attn_drop).to(device)
+    prognn = ProGNN(vanilla_model, perturbed_adj, args, device)
+    logging.info(f"Model: {prognn}")
 
-    total_params = sum(p.numel() for p in vanilla_model.parameters())
-    logging.info(f"Total parameters: {total_params}")
-    logging.info(f"Model: {vanilla_model}")
-    logging.info(f"Optimizer: {optimizer}")
+    prognn.fit(features, perturbed_adj, labels, train_idx, valid_idx)
 
-    std_trainer = VanillaTrainer(vanilla_model, criterion, optimizer, args)
+    evaluate_node_level(prognn.model, criterion, features, adj, label, test_idx, num_classes == 2)
+    orig_outputs, orig_graph_repr, orig_att = prognn.model(features, adj)
 
-    orig_outputs, orig_graph_repr, orig_att = std_trainer.train(features, adj, label, train_idx, valid_idx)
-
-    evaluate_node_level(vanilla_model, criterion, features, adj, label, test_idx, num_classes == 2)
-
-    torch.save(vanilla_model.state_dict(), os.path.join(save_dir, 'model_parameters.pth'))
+    torch.save(prognn.model.state_dict(), os.path.join(save_dir, 'model_parameters.pth'))
     tensor_dict = {'orig_outputs': orig_outputs, 'orig_graph_repr': orig_graph_repr, 'orig_att': orig_att}
-    torch.save(tensor_dict, os.path.join(save_dir, 'orig_tensors.pth'))
+    torch.save(tensor_dict, os.path.join(save_dir, 'tensors.pth'))
 
-    attacker = PGD(epsilon=args.epsilon,
-                   n_epoch=args.n_epoch_attack,
-                   n_inject_max=args.n_inject_max,
-                   n_edge_max=args.n_edge_max,
-                   feat_lim_min=features.min().item(),
-                   feat_lim_max=features.max().item(),
-                   device=device)
+    tim = '_18-05'
+    adj_perturbed = sp.load_npz(f'./vanilla_model/{args.dataset}{tim}/adj_delta.npz')
+    feats_perturbed = torch.load(f'./vanilla_model/{args.dataset}{tim}/feats_delta.pth')
 
-    vanilla_model.eval()
-    adj_delta, feats_delta = attacker.attack(vanilla_model, adj, features, train_idx, None)
-    new_outputs, new_graph_repr, new_att = vanilla_model(torch.cat((features, feats_delta), dim=0), adj_delta)
+    prognn.model.eval()
+    new_outputs, new_graph_repr, new_att = prognn.model(torch.cat((features, feats_perturbed), dim=0), adj_perturbed)
     new_outputs, new_graph_repr, new_att = \
         new_outputs[:orig_outputs.shape[0]], new_graph_repr[:orig_graph_repr.shape[0]], new_att[:orig_att.shape[0]]
 
@@ -129,10 +123,5 @@ if __name__ == '__main__':
     logging.info(f"JSD: {JSD_score}")
     logging.info(f"TVD: {TVD_score}")
 
-    sp.save_npz(os.path.join(save_dir, 'adj_delta.npz'), adj_delta)
-    torch.save(feats_delta, os.path.join(save_dir, 'feats_delta.pth'))
-    tensor_dict = {'new_outputs': new_outputs, 'new_graph_repr': new_graph_repr, 'new_att': new_att}
-    torch.save(tensor_dict, os.path.join(save_dir, 'new_tensors.pth'))
-
-    fidelity_pos, fidelity_neg = compute_fidelity(vanilla_model, adj, features, label, test_idx)
+    fidelity_pos, fidelity_neg = compute_fidelity(prognn, adj, features, label, test_idx)
     logging.info(f"fidelity_pos: {fidelity_pos}, fidelity_neg: {fidelity_neg}")
