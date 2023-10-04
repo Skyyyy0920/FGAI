@@ -165,7 +165,7 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 6. Load pre-trained vanilla model
     # ==================================================================================================
-    tim = '_10-32'
+    tim = '_10-39'
     vanilla_model.load_state_dict(torch.load(f'./vanilla_model/{args.dataset}{tim}/model_parameters.pth'))
     vanilla_model.eval()
 

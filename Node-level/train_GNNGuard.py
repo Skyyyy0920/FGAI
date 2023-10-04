@@ -2,17 +2,17 @@ import time
 import yaml
 import argparse
 import torch.nn as nn
+import torch.optim as optim
 from utils import *
-from models import ProGNN, GATNodeClassifier
+from models import GNNGuard
 from load_dataset import load_dataset
-from deeprobust.graph.utils import preprocess
-from deeprobust.graph.global_attack import Random
+from trainer import VanillaTrainer
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 def get_args():
-    parser = argparse.ArgumentParser(description="ProGNN's args")
+    parser = argparse.ArgumentParser(description="GNNGuard's args")
 
     # Data
     parser.add_argument('--dataset',
@@ -20,12 +20,14 @@ def get_args():
                         # default='ogbn-arxiv',
                         # default='ogbn-products',
                         # default='ogbn-papers100M',
-                        default='pubmed',
+                        # default='pubmed',
                         # default='questions',
                         # default='amazon-ratings',
                         # default='roman-empire',
                         # default='amazon_photo',
                         # default='amazon_cs',
+                        # default='coauthor_cs',
+                        default='coauthor_phy',
                         help='Dataset name')
 
     # Experimental Setup
@@ -55,12 +57,11 @@ if __name__ == '__main__':
             args = yaml.safe_load(file)
         args = argparse.Namespace(**args)
     args.device = device
-    args.ptb_rate = 0.05
 
     for handler in logging.root.handlers[:]:
         logging.root.removeHandler(handler)
     logging_time = time.strftime('%H-%M', time.localtime())
-    save_dir = os.path.join("ProGNN_checkpoints", f"{args.dataset}_{logging_time}")
+    save_dir = os.path.join("GNNGuard_checkpoints", f"{args.dataset}_{logging_time}")
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
     logging.basicConfig(level=logging.INFO,
@@ -79,43 +80,40 @@ if __name__ == '__main__':
     logging.info(f"Saving path: {save_dir}")
 
     adj, features, label, train_idx, valid_idx, test_idx, num_classes = load_dataset(args)
-    adj.data[adj.data > 1] = 1
     in_feats = features.shape[1]
 
-    attacker = Random()
-    n_perturbations = int(args.ptb_rate * (adj.sum() // 2))
-    attacker.attack(adj, n_perturbations, type='add')
-    # perturbed_adj = attacker.modified_adj.tocsc().tocsr()
-    perturbed_adj = attacker.modified_adj
-    perturbed_adj, features, labels = preprocess(perturbed_adj, features.detach().cpu(), label.detach().cpu().numpy(),
-                                                 preprocess_adj=False, device=device)
-
     criterion = nn.CrossEntropyLoss()
-    vanilla_model = GATNodeClassifier(in_feats=in_feats,
-                                      hid_dim=args.hid_dim,
-                                      n_classes=num_classes,
-                                      n_layers=args.n_layers,
-                                      n_heads=args.n_heads,
-                                      feat_drop=args.feat_drop,
-                                      attn_drop=args.attn_drop).to(device)
-    prognn = ProGNN(vanilla_model, perturbed_adj, args, device)
-    logging.info(f"Model: {prognn.model}")
+    GATGuard = GNNGuard(in_feats=in_feats,
+                        hid_dim=args.hid_dim,
+                        n_classes=num_classes,
+                        n_layers=args.n_layers,
+                        n_heads=args.n_heads,
+                        dropout=0.6).to(device)
+    optimizer = optim.Adam(GATGuard.parameters(),
+                           lr=args.lr,
+                           weight_decay=args.weight_decay)
 
-    prognn.fit(features, perturbed_adj, labels, train_idx, valid_idx)
+    total_params = sum(p.numel() for p in GATGuard.parameters())
+    logging.info(f"Total parameters: {total_params}")
+    logging.info(f"Model: {GATGuard}")
+    logging.info(f"Optimizer: {optimizer}")
 
-    evaluate_node_level(prognn.model, criterion, features, adj, label, test_idx, num_classes == 2)
-    orig_outputs, orig_graph_repr, orig_att = prognn.model(features, adj)
+    std_trainer = VanillaTrainer(GATGuard, criterion, optimizer, args)
 
-    torch.save(prognn.model.state_dict(), os.path.join(save_dir, 'model_parameters.pth'))
+    orig_outputs, orig_graph_repr, orig_att = std_trainer.train(features, adj, label, train_idx, valid_idx)
+
+    evaluate_node_level(GATGuard, criterion, features, adj, label, test_idx, num_classes == 2)
+
+    torch.save(GATGuard.state_dict(), os.path.join(save_dir, 'model_parameters.pth'))
     tensor_dict = {'orig_outputs': orig_outputs, 'orig_graph_repr': orig_graph_repr, 'orig_att': orig_att}
     torch.save(tensor_dict, os.path.join(save_dir, 'tensors.pth'))
 
-    tim = '_18-09'
+    tim = '_00-53'
     adj_perturbed = sp.load_npz(f'./vanilla_model/{args.dataset}{tim}/adj_delta.npz')
-    feats_perturbed = torch.load(f'./vanilla_model/{args.dataset}{tim}/feats_delta.pth')
+    feats_perturbed = torch.load(f'./vanilla_model/{args.dataset}{tim}/feats_delta.pth').to(device)
 
-    prognn.model.eval()
-    new_outputs, new_graph_repr, new_att = prognn.model(torch.cat((features, feats_perturbed), dim=0), adj_perturbed)
+    GATGuard.eval()
+    new_outputs, new_graph_repr, new_att = GATGuard(torch.cat((features, feats_perturbed), dim=0), adj_perturbed)
     new_outputs, new_graph_repr, new_att = \
         new_outputs[:orig_outputs.shape[0]], new_graph_repr[:orig_graph_repr.shape[0]], new_att[:orig_att.shape[0]]
 
@@ -124,5 +122,5 @@ if __name__ == '__main__':
     logging.info(f"JSD: {JSD_score}")
     logging.info(f"TVD: {TVD_score}")
 
-    fidelity_pos, fidelity_neg = compute_fidelity(prognn, adj, features, label, test_idx)
+    fidelity_pos, fidelity_neg = compute_fidelity(GATGuard, adj, features, label, test_idx)
     logging.info(f"fidelity_pos: {fidelity_pos}, fidelity_neg: {fidelity_neg}")

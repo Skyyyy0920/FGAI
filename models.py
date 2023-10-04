@@ -1,10 +1,12 @@
+import os
+import time
+import dgl
 import numpy as np
 import scipy.sparse as sp
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import dgl
-import time
+from tqdm.auto import tqdm
 from copy import deepcopy
 import dgl.function as fn
 from dgl.nn import GATv2Conv
@@ -16,6 +18,12 @@ from utils import k_shell_algorithm
 import torch.optim as optim
 from deeprobust.graph.utils import accuracy
 from deeprobust.graph.defense.pgd import PGD, prox_operators
+from scipy.sparse import lil_matrix
+from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.preprocessing import normalize
+from grb.utils.normalize import GCNAdjNorm
+import grb.utils as utils
+from grb.evaluator import metric
 
 
 class GATConv(nn.Module):
@@ -24,8 +32,8 @@ class GATConv(nn.Module):
             in_feats,
             out_feats,
             num_heads,
-            feat_drop=0.0,
-            attn_drop=0.0,
+            feat_drop=0.6,
+            attn_drop=0.6,
             negative_slope=0.2,
             residual=False,
             activation=None,
@@ -187,7 +195,6 @@ class GATv2NodeClassifier(nn.Module):
             in_hid_dim = hid_dim * n_heads[i]
             self.layers.append(GATv2Conv(in_hid_dim, hid_dim, n_heads[i + 1], feat_drop, attn_drop, activation=F.elu,
                                          allow_zero_in_degree=True))
-        # self.out_layer = nn.Linear(hid_dim * n_heads[-1], n_classes)
         self.out_layer = GATv2Conv(hid_dim * n_heads[-1], n_classes, 1, feat_drop, attn_drop, activation=F.elu,
                                    allow_zero_in_degree=True)
         self.dropout = nn.Dropout(0.6)
@@ -206,6 +213,458 @@ class GATv2NodeClassifier(nn.Module):
         logits = x.flatten(1)
 
         return logits, graph_representation, att
+
+
+class GNNGuard(nn.Module):
+    def __init__(self, in_feats, n_classes, hid_dim, n_layers, n_heads, activation=F.leaky_relu,
+                 layer_norm=False, feat_norm=None, adj_norm_func=GCNAdjNorm, drop=False, attention=True, dropout=0.6):
+        super(GNNGuard, self).__init__()
+        self.in_features = in_feats
+        self.out_features = n_classes
+        self.feat_norm = feat_norm
+        self.adj_norm_func = adj_norm_func
+        if type(hid_dim) is int:
+            hid_dim = [hid_dim] * (n_layers - 1)
+        elif type(hid_dim) is list or type(hid_dim) is tuple:
+            assert len(hid_dim) == (n_layers - 1), "Incompatible sizes between hidden_features and n_layers."
+        n_features = [in_feats] + hid_dim + [n_classes]
+
+        self.layers = nn.ModuleList()
+        for i in range(n_layers):
+            if layer_norm:
+                if i == 0:
+                    self.layers.append(nn.LayerNorm(n_features[i]))
+                else:
+                    self.layers.append(nn.LayerNorm(n_features[i] * n_heads))
+            self.layers.append(GATConv(in_feats=n_features[i] * n_heads if i != 0 else n_features[i],
+                                       out_feats=n_features[i + 1],
+                                       num_heads=n_heads if i != n_layers - 1 else 1,
+                                       activation=activation if i != n_layers - 1 else None))
+        self.drop = drop
+        self.drop_learn = torch.nn.Linear(2, 1)
+        self.attention = attention
+        if dropout > 0.0:
+            self.dropout = nn.Dropout(dropout)
+        else:
+            self.dropout = None
+
+    @property
+    def model_type(self):
+        return "dgl"
+
+    def forward(self, x, adj):
+        graph = dgl.from_scipy(adj).to(x.device)
+        graph.ndata['features'] = x
+
+        for i, layer in enumerate(self.layers):
+            if isinstance(layer, nn.LayerNorm):
+                x = layer(x)
+            else:
+                if self.attention:
+                    adj = self.att_coef(x, adj)
+                    graph = dgl.from_scipy(adj).to(x.device)
+                    graph.ndata['features'] = x
+                x, att = layer(graph, x, get_attention=True)
+                x = x.flatten(1)
+                if i != len(self.layers) - 1:
+                    if self.dropout is not None:
+                        x = self.dropout(x)
+                graph_representation = x.mean(dim=0)
+
+        return x, graph_representation, att
+
+    def att_coef(self, features, adj):
+        adj = adj.tocoo()
+        n_node = features.shape[0]
+        row, col = adj.row, adj.col
+
+        features_copy = features.cpu().data.numpy()
+        sim_matrix = cosine_similarity(X=features_copy, Y=features_copy)  # try cosine similarity
+        sim = sim_matrix[row, col]
+        sim[sim < 0.1] = 0
+
+        """build a attention matrix"""
+        att_dense = lil_matrix((n_node, n_node), dtype=np.float32)
+        att_dense[row, col] = sim
+        if att_dense[0, 0] == 1:
+            att_dense = att_dense - sp.diags(att_dense.diagonal(), offsets=0, format="lil")
+        # normalization, make the sum of each row is 1
+        att_dense_norm = normalize(att_dense, axis=1, norm='l1')
+
+        """add learnable dropout, make character vector"""
+        if self.drop:
+            character = np.vstack((att_dense_norm[row, col].A1,
+                                   att_dense_norm[col, row].A1))
+            character = torch.from_numpy(character.T).to(features.device)
+            drop_score = self.drop_learn(character)
+            drop_score = torch.sigmoid(drop_score)  # do not use softmax since we only have one element
+            mm = torch.nn.Threshold(0.5, 0)
+            drop_score = mm(drop_score)
+            mm_2 = torch.nn.Threshold(-0.49, 1)
+            drop_score = mm_2(-drop_score)
+            drop_decision = drop_score.clone().requires_grad_()
+            drop_matrix = lil_matrix((n_node, n_node), dtype=np.float32)
+            drop_matrix[row, col] = drop_decision.cpu().data.numpy().squeeze(-1)
+            att_dense_norm = att_dense_norm.multiply(drop_matrix.tocsr())  # update, remove the 0 edges
+
+        if att_dense_norm[0, 0] == 0:  # add the weights of self-loop only add self-loop at the first layer
+            degree = (att_dense_norm != 0).sum(1).A1
+            lam = 1 / (degree + 1)  # degree +1 is to add itself
+            self_weight = sp.diags(np.array(lam), offsets=0, format="lil")
+            att = att_dense_norm + self_weight  # add the self loop
+        else:
+            att = att_dense_norm
+
+        row, col = att.nonzero()
+        att_edge_weight = att[row, col]
+        att_edge_weight = np.exp(att_edge_weight)
+        att_edge_weight = np.asarray(att_edge_weight.ravel())[0]
+        new_adj = sp.csr_matrix((att_edge_weight, (row, col)))
+
+        return new_adj
+
+
+class AdvTrainer(object):
+    def __init__(self, dataset, optimizer, loss, feat_norm=None, attack=None, attack_mode="injection",
+                 lr_scheduler=None, lr_patience=100, lr_factor=0.75, lr_min=1e-5, early_stop=None,
+                 early_stop_patience=100, early_stop_epsilon=1e-5, eval_metric=metric.eval_acc, device='cpu'):
+        self.adj = dataset.adj
+        self.features = dataset.features
+        self.labels = dataset.labels
+        self.train_mask = dataset.train_mask
+        self.val_mask = dataset.val_mask
+        self.test_mask = dataset.test_mask
+        self.num_classes = dataset.num_classes
+        self.num_nodes = dataset.num_nodes
+
+        self.device = device
+        self.features = utils.feat_preprocess(features=self.features,
+                                              feat_norm=feat_norm,
+                                              device=self.device)
+        self.labels = utils.label_preprocess(labels=self.labels,
+                                             device=self.device)
+
+        # Settings
+        assert isinstance(optimizer, torch.optim.Optimizer), "Optimizer should be instance of torch.optim.Optimizer."
+        self.optimizer = optimizer
+        self.loss = loss
+        self.eval_metric = eval_metric
+        self.attack = attack
+        self.attack_mode = attack_mode
+
+        # Learning rate scheduling
+        if lr_scheduler:
+            if isinstance(lr_scheduler,
+                          (torch.optim.lr_scheduler._LRScheduler, torch.optim.lr_scheduler.ReduceLROnPlateau)):
+                self.lr_scheduler = lr_scheduler
+            else:
+                self.lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                    self.optimizer,
+                    mode='min',
+                    patience=lr_patience,
+                    factor=lr_factor,
+                    min_lr=lr_min,
+                    verbose=True)
+        else:
+            self.lr_scheduler = None
+
+        if early_stop:
+            if isinstance(early_stop, EarlyStop):
+                self.early_stop = early_stop
+            else:
+                self.early_stop = EarlyStop(patience=early_stop_patience,
+                                            epsilon=early_stop_epsilon)
+        else:
+            self.early_stop = None
+
+    def train(self,
+              model,
+              n_epoch,
+              save_dir=None,
+              save_name=None,
+              eval_every=10,
+              save_after=0,
+              train_mode="trasductive",
+              verbose=True):
+        model.to(self.device)
+        model.train()
+
+        if save_dir is None:
+            cur_time = time.strftime("%Y_%m_%d_%H_%M_%S", time.localtime())
+            save_dir = "./tmp_{}".format(cur_time)
+        else:
+            if not os.path.exists(save_dir):
+                os.makedirs(save_dir)
+
+        if save_name is None:
+            save_name = "checkpoint.pt"
+        else:
+            if save_name.split(".")[-1] != "pt":
+                save_name = save_name + ".pt"
+
+        train_score_list = []
+        val_score_list = []
+        best_val_score = 0.0
+        features = self.features
+        train_mask = self.train_mask
+        val_mask = self.val_mask
+        labels = self.labels
+
+        if train_mode == "inductive":
+            # Inductive setting
+            train_val_mask = torch.logical_or(train_mask, val_mask)
+            train_val_index = torch.where(train_val_mask)[0]
+            train_index, val_index = torch.where(train_mask)[0], torch.where(val_mask)[0]
+            train_index_induc, val_index_induc = utils.get_index_induc(train_index, val_index)
+            train_mask_induc = torch.zeros(len(train_val_index), dtype=bool)
+            train_mask_induc[train_index_induc] = True
+            val_mask_induc = torch.zeros(len(train_val_index), dtype=bool)
+            val_mask_induc[val_index_induc] = True
+
+            features_train = features[train_mask]
+            features_val = features[train_val_mask]
+            adj_train = utils.adj_preprocess(self.adj,
+                                             adj_norm_func=model.adj_norm_func,
+                                             mask=self.train_mask,
+                                             model_type=model.model_type,
+                                             device=self.device)
+            adj_val = utils.adj_preprocess(self.adj,
+                                           adj_norm_func=model.adj_norm_func,
+                                           mask=train_val_mask,
+                                           model_type=model.model_type,
+                                           device=self.device)
+            num_train = torch.sum(train_mask).item()
+            epoch_bar = tqdm(range(n_epoch))
+            for epoch in epoch_bar:
+                logits = model(features_train, adj_train)[:num_train]
+                if self.loss == F.nll_loss:
+                    out = F.log_softmax(logits, 1)
+                    train_loss = self.loss(out, labels[train_mask])
+                    logits_val = model(features_val, adj_val)[:]
+                    out_val = F.log_softmax(logits_val, 1)
+                    val_loss = self.loss(out_val[val_mask_induc], labels[val_mask])
+                elif self.loss == F.cross_entropy:
+                    out = logits
+                    train_loss = self.loss(out, labels[train_mask])
+                    logits_val = model(features_val, adj_val)
+                    out_val = logits_val
+                    val_loss = self.loss(out_val[val_mask_induc], labels[val_mask])
+                elif self.loss == F.binary_cross_entropy:
+                    out = F.sigmoid(logits)
+                    train_loss = self.loss(out, labels[train_mask].float())
+                    logits_val = model(features_val, adj_val)
+                    out_val = F.sigmoid(logits_val)
+                    val_loss = self.loss(out_val[val_mask_induc], labels[val_mask].float())
+                elif self.loss == F.binary_cross_entropy_with_logits:
+                    out = logits
+                    train_loss = self.loss(out, labels[train_mask].float())
+                    logits_val = model(features_val, adj_val)
+                    out_val = F.sigmoid(logits_val)
+                    val_loss = self.loss(out_val[val_mask_induc], labels[val_mask].float())
+
+                self.optimizer.zero_grad()
+                train_loss.backward()
+                self.optimizer.step()
+
+                if self.attack is not None:
+                    if self.attack_mode == "injection":
+                        adj_attack, features_attack = self.attack.attack(model=model,
+                                                                         adj=self.adj[train_mask][:, train_mask],
+                                                                         features=features[train_mask],
+                                                                         target_mask=torch.ones(num_train, dtype=bool),
+                                                                         adj_norm_func=model.adj_norm_func)
+                        adj_train = utils.adj_preprocess(adj=adj_attack,
+                                                         adj_norm_func=model.adj_norm_func,
+                                                         model_type=model.model_type,
+                                                         device=self.device)
+                        features_train = torch.cat([features[train_mask], features_attack])
+                    else:
+                        adj_attack, features_attack = self.attack.attack(model=model,
+                                                                         adj=self.adj[train_mask][:, train_mask],
+                                                                         features=features[train_mask],
+                                                                         index_target=torch.range(0,
+                                                                                                  num_train - 1).multinomial(
+                                                                             int(num_train * 0.01)))
+                        adj_train = utils.adj_preprocess(adj=adj_attack,
+                                                         adj_norm_func=model.adj_norm_func,
+                                                         model_type=model.model_type,
+                                                         device=self.device)
+                        features_train = features_attack
+
+                if self.lr_scheduler:
+                    self.lr_scheduler.step(val_loss)
+                if self.early_stop:
+                    self.early_stop(val_loss)
+                    if self.early_stop.stop:
+                        print("Training: early stopped.")
+                        utils.save_model(model, save_dir, "final_" + save_name)
+                        return
+
+                if epoch % eval_every == 0:
+                    train_score = self.eval_metric(out, labels[train_mask], mask=None)
+                    val_score = self.eval_metric(out_val, labels[train_val_mask], mask=val_mask_induc)
+                    train_score_list.append(train_score)
+                    val_score_list.append(val_score)
+                    if val_score > best_val_score:
+                        best_val_score = val_score
+                        if epoch > save_after:
+                            epoch_bar.set_description(
+                                "Training: Epoch {:05d} | Best validation score: {:.4f}".format(epoch, best_val_score))
+                            utils.save_model(model, save_dir, save_name, verbose=verbose)
+                    epoch_bar.set_description(
+                        'Training: Epoch {:05d} | Train loss {:.4f} | Train score {:.4f} '
+                        '| Val loss {:.4f} | Val score {:.4f}'.format(
+                            epoch, train_loss, train_score, val_loss, val_score))
+        else:
+            # Transductive setting
+            adj_train = utils.adj_preprocess(self.adj,
+                                             adj_norm_func=model.adj_norm_func,
+                                             mask=None,
+                                             model_type=model.model_type,
+                                             device=self.device)
+            features_train = features
+            epoch_bar = tqdm(range(n_epoch))
+            for epoch in epoch_bar:
+                logits = model(features_train, adj_train)[:self.num_nodes]
+                if self.loss == F.nll_loss:
+                    out = F.log_softmax(logits, 1)
+                    train_loss = self.loss(out[train_mask], labels[train_mask])
+                    val_loss = self.loss(out[val_mask], labels[val_mask])
+                elif self.loss == F.cross_entropy:
+                    out = logits
+                    train_loss = self.loss(out[train_mask], labels[train_mask])
+                    val_loss = self.loss(out[val_mask], labels[val_mask])
+                elif self.loss == F.binary_cross_entropy:
+                    out = F.sigmoid(logits)
+                    train_loss = self.loss(out[train_mask], labels[train_mask].float())
+                    val_loss = self.loss(out[val_mask], labels[val_mask].float())
+                elif self.loss == F.binary_cross_entropy_with_logits:
+                    out = logits
+                    train_loss = self.loss(out[train_mask], labels[train_mask].float())
+                    val_loss = self.loss(out[val_mask], labels[val_mask].float())
+
+                self.optimizer.zero_grad()
+                train_loss.backward()
+                self.optimizer.step()
+
+                if self.attack is not None:
+                    adj_attack, features_attack = self.attack.attack(model=model,
+                                                                     adj=self.adj,
+                                                                     features=self.features,
+                                                                     target_mask=val_mask,
+                                                                     adj_norm_func=model.adj_norm_func)
+                    adj_train = utils.adj_preprocess(adj=adj_attack,
+                                                     adj_norm_func=model.adj_norm_func,
+                                                     model_type=model.model_type,
+                                                     device=self.device)
+                    features_train = torch.cat([features, features_attack])
+
+                if self.lr_scheduler:
+                    self.lr_scheduler.step(val_loss)
+                if self.early_stop:
+                    self.early_stop(val_loss)
+                    if self.early_stop.stop:
+                        print("Training: early stopped.")
+                        utils.save_model(model, save_dir, "final_" + save_name, verbose=verbose)
+                        return
+
+                if epoch % eval_every == 0:
+                    train_score = self.eval_metric(out, labels, train_mask)
+                    val_score = self.eval_metric(out, labels, val_mask)
+                    train_score_list.append(train_score)
+                    val_score_list.append(val_score)
+                    if val_score > best_val_score:
+                        best_val_score = val_score
+                        if epoch > save_after:
+                            epoch_bar.set_description(
+                                "Training: Epoch {:05d} | Best validation score: {:.4f}".format(epoch, best_val_score))
+                            utils.save_model(model, save_dir, save_name, verbose=verbose)
+
+                    epoch_bar.set_description(
+                        'Training: Epoch {:05d} | Train loss {:.4f} | Train score {:.4f} '
+                        '| Val loss {:.4f} | Val score {:.4f}'.format(
+                            epoch, train_loss, train_score, val_loss, val_score))
+
+        utils.save_model(model, save_dir, "final_" + save_name)
+
+    def inference(self, model):
+        r"""
+
+        Description
+        -----------
+        Inference of a GNN model.
+
+        Parameters
+        ----------
+        model : torch.nn.module
+            Model implemented based on ``torch.nn.module``.
+
+        Returns
+        -------
+        logits : torch.Tensor
+            Output logits of model.
+
+        """
+        model.to(self.device)
+        model.eval()
+        adj = utils.adj_preprocess(self.adj,
+                                   adj_norm_func=model.adj_norm_func,
+                                   model_type=model.model_type,
+                                   device=self.device)
+        logits = model(self.features, adj)
+
+        return logits
+
+    def evaluate(self, model, mask=None):
+        r"""
+
+        Description
+        -----------
+        Evaluation of a GNN model.
+
+        Parameters
+        ----------
+        model : torch.nn.module
+            Model implemented based on ``torch.nn.module``.
+        mask : torch.tensor, optional
+            Mask of target nodes.  Default: ``None``.
+
+        Returns
+        -------
+        score : float
+            Score on masked nodes.
+
+        """
+        model.to(self.device)
+        model.eval()
+        adj = utils.adj_preprocess(self.adj,
+                                   adj_norm_func=model.adj_norm_func,
+                                   model_type=model.model_type,
+                                   device=self.device)
+        logits = model(self.features, adj)
+        score = self.eval_metric(logits, self.labels, mask)
+
+        return score
+
+
+class EarlyStop(object):
+    def __init__(self, patience=1000, epsilon=1e-5):
+        self.patience = patience
+        self.epsilon = epsilon
+        self.min_loss = None
+        self.stop = False
+        self.count = 0
+
+    def __call__(self, loss):
+        if self.min_loss is None:
+            self.min_loss = loss
+        elif self.min_loss - loss > self.epsilon:
+            self.count = 0
+            self.min_loss = loss
+        elif self.min_loss - loss < self.epsilon:
+            self.count += 1
+            if self.count > self.patience:
+                self.stop = True
 
 
 class GATGraphClassifier(nn.Module):
@@ -298,14 +757,19 @@ class ProGNN:
         self.model.train()
         self.optimizer.zero_grad()
 
-        output = self.model(features, adj)
+        if isinstance(adj, torch.Tensor):
+            adj_ = adj.to_sparse(layout=torch.sparse_csr).detach().cpu()
+            adj_ = sp.csr_matrix((adj_.values(), (adj_.crow_indices(), adj_.col_indices())), shape=adj_.size())
+        else:
+            adj_ = adj
+        output = self.model(features, adj_)
         loss_train = F.cross_entropy(output[train_idx], labels[train_idx])
         acc_train = accuracy(output[train_idx], labels[train_idx])
         loss_train.backward()
         self.optimizer.step()
 
         self.model.eval()
-        output = self.model(features, adj)
+        output = self.model(features, adj_)
 
         loss_val = F.cross_entropy(output[idx_val], labels[idx_val])
         acc_val = accuracy(output[idx_val], labels[idx_val])
@@ -350,7 +814,13 @@ class ProGNN:
         else:
             loss_smooth_feat = 0 * loss_l1
 
-        output = self.model(features, normalized_adj)
+        if isinstance(normalized_adj, torch.Tensor):
+            adj_ = normalized_adj.to_sparse(layout=torch.sparse_csr).detach().cpu()
+            adj_ = sp.csr_matrix((adj_.values(), (adj_.crow_indices(), adj_.col_indices())), shape=adj_.size())
+            print(111)
+        else:
+            adj_ = normalized_adj
+        output = self.model(features, adj_)
         loss_gcn = F.nll_loss(output[idx_train], labels[idx_train])
         acc_train = accuracy(output[idx_train], labels[idx_train])
 
@@ -383,7 +853,7 @@ class ProGNN:
         # deactivates dropout during validation run.
         self.model.eval()
         normalized_adj = estimator.normalize()
-        output = self.model(features, normalized_adj)
+        output = self.model(features, adj_)
 
         loss_val = F.nll_loss(output[idx_val], labels[idx_val])
         acc_val = accuracy(output[idx_val], labels[idx_val])
@@ -445,7 +915,7 @@ class EstimateAdj(nn.Module):
 
     def __init__(self, adj, symmetric=False, device='cpu'):
         super(EstimateAdj, self).__init__()
-        n = len(adj)
+        n = adj.shape[0]
         self.estimated_adj = nn.Parameter(torch.FloatTensor(n, n))
         self._init_estimation(adj)
         self.symmetric = symmetric
@@ -453,14 +923,12 @@ class EstimateAdj(nn.Module):
 
     def _init_estimation(self, adj):
         with torch.no_grad():
-            n = len(adj)
             self.estimated_adj.data.copy_(adj)
 
     def forward(self):
         return self.estimated_adj
 
     def normalize(self):
-
         if self.symmetric:
             adj = (self.estimated_adj + self.estimated_adj.t()) / 2
         else:
