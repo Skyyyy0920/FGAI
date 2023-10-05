@@ -164,16 +164,20 @@ class PGD(InjectionAttack):
         new_edges_x = []
         new_edges_y = []
         new_data = []
+        # for i in range(n_inject):
+        #     x = i + n_node
+        #     yy_indices = np.random.choice(n_test, size=self.n_edge_max, replace=False)
+        #     yy_indices = yy_indices[:int(np.random.rand() * len(yy_indices))]
+        #
+        #     for yy_index in yy_indices:
+        #         y = test_index[yy_index]
+        #         new_edges_x.extend([x, y])
+        #         new_edges_y.extend([y, x])
+        #         new_data.extend([1, 1])
         for i in range(n_inject):
-            islinked = np.zeros(n_test)
+            x = i + n_node
             for j in range(self.n_edge_max):
-                x = i + n_node
-
                 yy = random.randint(0, n_test - 1)
-                while islinked[yy] > 0:
-                    yy = random.randint(0, n_test - 1)
-                islinked[yy] = 1
-
                 y = test_index[yy]
                 new_edges_x.extend([x, y])
                 new_edges_y.extend([y, x])
@@ -271,7 +275,6 @@ class PGD(InjectionAttack):
                     return features_attack
 
             if self.verbose:
-                print(
-                    "Attacking: Epoch {}, Loss: {:.5f}, Surrogate test score: {:.5f}".format(i, pred_loss, test_score))
+                print("Attacking: Epoch {}, Loss: {:.5f}, test score: {:.5f}".format(i, pred_loss, test_score))
 
         return features_attack

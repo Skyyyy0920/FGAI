@@ -1,9 +1,9 @@
 import os
 import torch
-import random
 import logging
 import numpy as np
 import scipy.sparse as sp
+from sklearn.feature_selection import mutual_info_classif
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
@@ -155,11 +155,13 @@ def evaluate_graph_level(model, test_loader, device):
 def compute_fidelity(model, adj, feats, labels, test_idx):
     model.eval()
 
+    variances = torch.var(feats, dim=0)
+    sorted_indices = torch.argsort(variances)
+
     fidelity_pos_list, fidelity_neg_list = [], []
     for split in [1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1]:
-        variances = torch.var(feats, dim=0)
-        imp_indices = torch.argsort(variances)[-int(feats.shape[1] * split):]
-        unimp_indices = torch.argsort(variances)[:int(feats.shape[1] * split)]
+        imp_indices = sorted_indices[-int(feats.shape[1] * split):]
+        unimp_indices = sorted_indices[:int(feats.shape[1] * split)]
         feats_imp = torch.zeros_like(feats)
         feats_imp[:, imp_indices] = feats[:, imp_indices]
         feats_unimp = torch.zeros_like(feats)

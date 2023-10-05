@@ -83,15 +83,18 @@ if __name__ == '__main__':
                    n_epoch=args.n_epoch_attack,
                    n_inject_max=args.n_inject_max,
                    n_edge_max=args.n_edge_max,
-                   feat_lim_min=features.min().item(),
-                   feat_lim_max=features.max().item(),
+                   feat_lim_min=-1,
+                   feat_lim_max=1,
                    device=device)
 
     GAT.eval()
-    adj_delta, feats_delta = attacker.attack(GAT, adj, features, train_idx, None)
+    adj_delta, feats_delta = attacker.attack(GAT, adj, features, test_idx, None)
     new_outputs, new_graph_repr, new_att = GAT(torch.cat((features, feats_delta), dim=0), adj_delta)
     new_outputs, new_graph_repr, new_att = \
         new_outputs[:orig_outputs.shape[0]], new_graph_repr[:orig_graph_repr.shape[0]], new_att[:orig_att.shape[0]]
+    pred = torch.argmax(new_outputs[test_idx], dim=1)
+    accuracy = accuracy_score(label[test_idx].cpu(), pred.cpu())
+    logging.info(f"Accuracy after attack: {accuracy}")
 
     TVD_score = TVD(orig_att, new_att) / len(orig_att)
     JSD_score = JSD(orig_att, new_att) / len(orig_att)
