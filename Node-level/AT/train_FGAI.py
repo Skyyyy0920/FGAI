@@ -4,7 +4,7 @@ import torch.nn as nn
 import zipfile
 import argparse
 from pathlib import Path
-from models import GATNodeClassifier
+from models import GATNodeClassifier, GNNGuard
 from utils import *
 from trainer import FGAITrainer
 from load_dataset import load_dataset
@@ -13,7 +13,8 @@ import torch.optim as optim
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-device = 'cpu'
+
+# device = 'cpu'
 
 
 def get_args():
@@ -29,10 +30,10 @@ def get_args():
                         # default='questions',
                         # default='amazon-ratings',
                         # default='roman-empire',
-                        # default='amazon_photo',
+                        default='amazon_photo',
                         # default='amazon_cs',
                         # default='coauthor_cs',
-                        default='coauthor_phy',
+                        # default='coauthor_phy',
                         help='Dataset name')
 
     # Experimental Setup
@@ -120,20 +121,32 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 5. Build models, define overall loss and optimizer
     # ==================================================================================================
-    vanilla_model = GATNodeClassifier(in_feats=in_feats,
-                                      hid_dim=args.hid_dim,
-                                      n_classes=num_classes,
-                                      n_layers=args.n_layers,
-                                      n_heads=args.n_heads,
-                                      feat_drop=args.feat_drop,
-                                      attn_drop=args.attn_drop).to(device)
-    FGAI = GATNodeClassifier(in_feats=in_feats,
+    # GAT_checkpoints = GATNodeClassifier(in_feats=in_feats,
+    #                                   hid_dim=args.hid_dim,
+    #                                   n_classes=num_classes,
+    #                                   n_layers=args.n_layers,
+    #                                   n_heads=args.n_heads,
+    #                                   feat_drop=args.feat_drop,
+    #                                   attn_drop=args.attn_drop).to(device)
+    # FGAI = GATNodeClassifier(in_feats=in_feats,
+    #                          hid_dim=args.hid_dim,
+    #                          n_classes=num_classes,
+    #                          n_layers=args.n_layers,
+    #                          n_heads=args.n_heads,
+    #                          feat_drop=args.feat_drop,
+    #                          attn_drop=args.attn_drop).to(device)
+    FGAI = GNNGuard(in_feats=in_feats,
                              hid_dim=args.hid_dim,
                              n_classes=num_classes,
                              n_layers=args.n_layers,
                              n_heads=args.n_heads,
-                             feat_drop=args.feat_drop,
-                             attn_drop=args.attn_drop).to(device)
+                             dropout=0.6).to(device)
+    vanilla_model = GNNGuard(in_feats=in_feats,
+                             hid_dim=args.hid_dim,
+                             n_classes=num_classes,
+                             n_layers=args.n_layers,
+                             n_heads=args.n_heads,
+                             dropout=0.6).to(device)
     optimizer = optim.Adam(FGAI.parameters(),
                            lr=args.lr,
                            weight_decay=args.weight_decay)
@@ -160,16 +173,18 @@ if __name__ == '__main__':
                        device=device)
     criterion = nn.CrossEntropyLoss()
 
-    FGAI_trainer = FGAITrainer(FGAI, optimizer, attacker_delta, attacker_rho, args)
+    trainer = FGAITrainer(FGAI, optimizer, attacker_delta, attacker_rho, args)
 
     # ==================================================================================================
     # 6. Load pre-trained vanilla model
     # ==================================================================================================
-    tim = '_10-39'
-    vanilla_model.load_state_dict(torch.load(f'./vanilla_model/{args.dataset}{tim}/model_parameters.pth'))
+    tim = '_19-44'
+    # GAT_checkpoints.load_state_dict(torch.load(f'./GAT_checkpoints/{args.dataset}{tim}/model_parameters.pth'))
+    vanilla_model.load_state_dict(torch.load(f'./GNNGuard_checkpoints/amazon_photo_18-23/model_parameters.pth'))
     vanilla_model.eval()
 
-    tensor_dict = torch.load(f'./vanilla_model/{args.dataset}{tim}/orig_tensors.pth')
+    # tensor_dict = torch.load(f'./GAT_checkpoints/{args.dataset}{tim}/orig_tensors.pth')
+    tensor_dict = torch.load(f'./GNNGuard_checkpoints/amazon_photo_18-23/tensors.pth')
     orig_outputs = tensor_dict['orig_outputs'].to(device=device)
     orig_graph_repr = tensor_dict['orig_graph_repr'].to(device=device)
     orig_att = tensor_dict['orig_att'].to(device=device)
@@ -180,8 +195,8 @@ if __name__ == '__main__':
     # 7. Train our FGAI
     # ==================================================================================================
     idx_split = train_idx, valid_idx, test_idx
-    FGAI_outputs, FGAI_graph_repr, FGAI_att = FGAI_trainer.train(features, adj, label, idx_split, orig_outputs,
-                                                                 orig_graph_repr, orig_att)
+    FGAI_outputs, FGAI_graph_repr, FGAI_att = trainer.train(features, adj, label, idx_split, orig_outputs,
+                                                            orig_graph_repr, orig_att)
     evaluate_node_level(FGAI, criterion, features, adj, label, test_idx, num_classes == 2)
 
     # ==================================================================================================

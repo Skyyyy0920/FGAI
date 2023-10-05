@@ -338,11 +338,8 @@ class AdvTrainer(object):
         self.num_nodes = dataset.num_nodes
 
         self.device = device
-        self.features = utils.feat_preprocess(features=self.features,
-                                              feat_norm=feat_norm,
-                                              device=self.device)
-        self.labels = utils.label_preprocess(labels=self.labels,
-                                             device=self.device)
+        self.features = utils.feat_preprocess(features=self.features, feat_norm=feat_norm, device=self.device)
+        self.labels = utils.label_preprocess(labels=self.labels, device=self.device)
 
         # Settings
         assert isinstance(optimizer, torch.optim.Optimizer), "Optimizer should be instance of torch.optim.Optimizer."
@@ -945,16 +942,3 @@ class EstimateAdj(nn.Module):
         mx = r_mat_inv @ mx
         mx = mx @ r_mat_inv
         return mx
-
-
-class MultiTaskLoss(nn.Module):
-    def __init__(self, num=4):
-        super(MultiTaskLoss, self).__init__()
-        params = torch.ones(num, requires_grad=True)
-        self.params = nn.Parameter(params)
-
-    def forward(self, *losses):
-        loss_sum = 0
-        for i, loss in enumerate(losses):
-            loss_sum += 0.5 * torch.exp(-self.params[i]) * loss + self.params[i]
-        return loss_sum

@@ -115,19 +115,19 @@ def topK_overlap_loss(new_att, old_att, adj, K=2, metric='l1'):
     return loss
 
 
-def evaluate_node_level(model, criterion, features, adj, label, test_idx, roc_auc=True):
+def evaluate_node_level(model, features, adj, label, test_idx, roc_auc=True):
     model.eval()
     with torch.no_grad():
-        test_outputs, graph_rep, _ = model(features, adj)
-        loss = criterion(test_outputs[test_idx], label[test_idx])
-        pred = torch.argmax(test_outputs[test_idx], dim=1)
+        orig_outputs, orig_graph_repr, orig_att = model(features, adj)
+        pred = torch.argmax(orig_outputs[test_idx], dim=1)
         accuracy = accuracy_score(label[test_idx].cpu(), pred.cpu())
         f1 = f1_score(label[test_idx].cpu(), pred.cpu(), average='micro')
         if roc_auc:
             roc_auc_ = roc_auc_score(label[test_idx].cpu(), pred.cpu())
             logging.info(f'ROC_AUC: {roc_auc_}')
 
-    logging.info(f'Test Loss: {loss.item():.4f} | Accuracy: {accuracy:.4f} | F1 Score: {f1:.4f}')
+    logging.info(f'Test Accuracy: {accuracy:.4f} | F1 Score: {f1:.4f}')
+    return orig_outputs, orig_graph_repr, orig_att
 
 
 def evaluate_graph_level(model, criterion, test_loader, device):
@@ -159,24 +159,28 @@ def evaluate_graph_level(model, criterion, test_loader, device):
 def compute_fidelity(model, adj, feats, labels, test_idx):
     model.eval()
 
-    variances = torch.var(feats, dim=0)
-    imp_indices = torch.argsort(variances)[-int(feats.shape[1] * 0.5):]
-    unimp_indices = torch.argsort(variances)[:int(feats.shape[1] * 0.5)]
-    feats_imp = torch.zeros_like(feats)
-    feats_imp[:, imp_indices] = feats[:, imp_indices]
-    feats_unimp = torch.zeros_like(feats)
-    feats_unimp[:, unimp_indices] = feats[:, unimp_indices]
+    fidelity_pos_list, fidelity_neg_list = [], []
+    for split in [1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1]:
+        variances = torch.var(feats, dim=0)
+        imp_indices = torch.argsort(variances)[-int(feats.shape[1] * split):]
+        unimp_indices = torch.argsort(variances)[:int(feats.shape[1] * split)]
+        feats_imp = torch.zeros_like(feats)
+        feats_imp[:, imp_indices] = feats[:, imp_indices]
+        feats_unimp = torch.zeros_like(feats)
+        feats_unimp[:, unimp_indices] = feats[:, unimp_indices]
 
-    outputs, _, _ = model(feats, adj)
-    outputs_wo_imp, _, _ = model(feats_unimp, adj)
-    outputs_wo_unimp, _, _ = model(feats_imp, adj)
-    pred = torch.argmax(outputs, dim=1)[test_idx]
-    pred_wo_imp = torch.argmax(outputs_wo_imp, dim=1)[test_idx]
-    pred_wo_unimp = torch.argmax(outputs_wo_unimp, dim=1)[test_idx]
-    labels = labels[test_idx]
+        outputs, _, _ = model(feats, adj)
+        outputs_wo_imp, _, _ = model(feats_unimp, adj)
+        outputs_wo_unimp, _, _ = model(feats_imp, adj)
+        pred = torch.argmax(outputs, dim=1)[test_idx]
+        pred_wo_imp = torch.argmax(outputs_wo_imp, dim=1)[test_idx]
+        pred_wo_unimp = torch.argmax(outputs_wo_unimp, dim=1)[test_idx]
+        labels_test = labels[test_idx]
 
-    corr_idx = torch.where(pred == labels)[0]
-    fidelity_pos = torch.sum(pred_wo_unimp[corr_idx] == labels[corr_idx]) / len(corr_idx)
-    fidelity_neg = torch.sum(pred_wo_imp[corr_idx] == labels[corr_idx]) / len(corr_idx)
+        corr_idx = torch.where(pred == labels_test)[0]
+        fidelity_pos = torch.sum(pred_wo_unimp[corr_idx] == labels_test[corr_idx]) / len(corr_idx)
+        fidelity_neg = torch.sum(pred_wo_imp[corr_idx] == labels_test[corr_idx]) / len(corr_idx)
+        fidelity_pos_list.append(round(fidelity_pos.item(), 4))
+        fidelity_neg_list.append(round(fidelity_neg.item(), 4))
 
-    return fidelity_pos, fidelity_neg
+    return fidelity_pos_list, fidelity_neg_list

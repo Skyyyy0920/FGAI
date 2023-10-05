@@ -9,6 +9,7 @@ from load_dataset import load_dataset
 from trainer import VanillaTrainer
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+# device = 'cpu'
 
 
 def get_args():
@@ -24,10 +25,10 @@ def get_args():
                         # default='questions',
                         # default='amazon-ratings',
                         # default='roman-empire',
-                        # default='amazon_photo',
+                        default='amazon_photo',
                         # default='amazon_cs',
                         # default='coauthor_cs',
-                        default='coauthor_phy',
+                        # default='coauthor_phy',
                         help='Dataset name')
 
     # Experimental Setup
@@ -108,7 +109,7 @@ if __name__ == '__main__':
     tensor_dict = {'orig_outputs': orig_outputs, 'orig_graph_repr': orig_graph_repr, 'orig_att': orig_att}
     torch.save(tensor_dict, os.path.join(save_dir, 'tensors.pth'))
 
-    tim = '_00-53'
+    tim = '_19-41'
     adj_perturbed = sp.load_npz(f'./vanilla_model/{args.dataset}{tim}/adj_delta.npz')
     feats_perturbed = torch.load(f'./vanilla_model/{args.dataset}{tim}/feats_delta.pth').to(device)
 
