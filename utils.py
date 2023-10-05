@@ -130,18 +130,15 @@ def evaluate_node_level(model, features, adj, label, test_idx, roc_auc=True):
     return orig_outputs, orig_graph_repr, orig_att
 
 
-def evaluate_graph_level(model, criterion, test_loader, device):
+def evaluate_graph_level(model, test_loader, device):
     model.eval()
     with torch.no_grad():
-        loss_list = []
         pred_list, label_list = [], []
         for batched_graph, labels in test_loader:
             labels = labels.to(device)
             feats = batched_graph.ndata['attr'].to(device)
 
             logits, _, _ = model(feats, batched_graph.to(device))
-            loss = criterion(logits, labels)
-            loss_list.append(loss.item())
 
             predicted = logits.argmax(dim=1)
             pred_list = pred_list + predicted.tolist()
@@ -152,8 +149,7 @@ def evaluate_graph_level(model, criterion, test_loader, device):
         recall = recall_score(label_list, pred_list)
         f1 = f1_score(label_list, pred_list)
 
-    logging.info(f'Test Loss: {np.mean(loss_list):.4f} | Accuracy: {accuracy:.4f} | Precision: {precision:.4f}'
-                 f' | Recall: {recall:.4f} | F1: {f1:.4f}')
+    logging.info(f'Test Accuracy: {accuracy:.4f} | Precision: {precision:.4f} | Recall: {recall:.4f} | F1: {f1:.4f}')
 
 
 def compute_fidelity(model, adj, feats, labels, test_idx):
