@@ -16,12 +16,12 @@ if __name__ == '__main__':
     # dataset ='ogbn-arxiv'
     # dataset='ogbn-products'
     # dataset='ogbn-papers100M'
-    dataset = 'pubmed'
     # dataset='questions'
     # dataset='amazon-ratings'
     # dataset='roman-empire'
+    # dataset = 'pubmed'
     # dataset = 'amazon_photo'
-    # dataset = 'amazon_cs'
+    dataset = 'amazon_cs'
     # dataset = 'coauthor_cs'
     # dataset = 'coauthor_phy'
 
@@ -29,6 +29,7 @@ if __name__ == '__main__':
         args = yaml.full_load(file)
     args = argparse.Namespace(**args)
     args.device = device
+    # args.num_epochs = 0
 
     for handler in logging.root.handlers[:]:
         logging.root.removeHandler(handler)
