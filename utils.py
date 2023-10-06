@@ -74,6 +74,53 @@ def JSD(a, b):
     return loss
 
 
+# def topK_overlap_loss(new_att, old_att, adj, K=2, metric='l1'):
+#     new_att, old_att = new_att.squeeze(), old_att.squeeze()
+#     src, dst = adj.nonzero()
+#     src, dst = torch.tensor(src), torch.tensor(dst)
+#
+#     loss = 0
+#
+#     for node_id in range(adj.shape[0] - 1):
+#         indices = torch.where(src == node_id)[0]
+#         old_neighbor_att = old_att[indices]  # 1维tensor, 假设邻居节点有n个, 则为(n, )的tensor
+#         new_neighbor_att = new_att[indices]
+#
+#         idx_1 = torch.argsort(new_neighbor_att, descending=True)
+#         idx_1 = idx_1[:K]
+#         old_topK_1 = old_neighbor_att.gather(0, idx_1)
+#         new_topK_1 = new_neighbor_att.gather(0, idx_1)
+#
+#         idx_2 = torch.argsort(old_neighbor_att, descending=True)
+#         idx_2 = idx_2[:K]
+#         old_topK_2 = old_neighbor_att.gather(0, idx_2)
+#         new_topK_2 = new_neighbor_att.gather(0, idx_2)
+#
+#         if metric == 'l1':
+#             loss += (torch.norm(old_topK_1 - new_topK_1, p=1) + torch.norm(new_topK_2 - old_topK_2, p=1)) / (2 * K)
+#         elif metric == 'l2':
+#             loss += (torch.norm(old_topK_1 - new_topK_1, p=2) + torch.norm(new_topK_2 - old_topK_2, p=2)) / (2 * K)
+#         elif metric == "kl-full":
+#             loss += kl(new_att, old_att)
+#         elif metric == "jsd-full":
+#             loss += JSD(new_att, old_att)
+#         elif metric == "kl-topk":
+#             gt_Topk_1_normed = torch.nn.functional.softmax(new_topK_1, dim=-1)
+#             pred_TopK_1_normed = torch.nn.functional.softmax(old_topK_1, dim=-1)
+#             gt_TopK_2_normed = torch.nn.functional.softmax(new_topK_2, dim=-1)
+#             pred_TopK_2_normed = torch.nn.functional.softmax(old_topK_2, dim=-1)
+#             loss += (kl(gt_Topk_1_normed, pred_TopK_1_normed) + kl(gt_TopK_2_normed, pred_TopK_2_normed)) / 2
+#         elif metric == "jsd-topk":
+#             gt_Topk_1_normed = torch.nn.functional.softmax(new_topK_1, dim=-1)
+#             pred_TopK_1_normed = torch.nn.functional.softmax(old_topK_1, dim=-1)
+#             gt_TopK_2_normed = torch.nn.functional.softmax(new_topK_2, dim=-1)
+#             pred_TopK_2_normed = torch.nn.functional.softmax(old_topK_2, dim=-1)
+#             loss += (JSD(gt_Topk_1_normed, pred_TopK_1_normed) + JSD(gt_TopK_2_normed, pred_TopK_2_normed)) / 2
+#         else:
+#             raise ValueError(f"Unknown metric: {metric}")
+#     return loss
+
+
 def topK_overlap_loss(new_att, old_att, adj, K=2, metric='l1'):
     new_att, old_att = new_att.squeeze(), old_att.squeeze()
 

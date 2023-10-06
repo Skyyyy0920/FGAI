@@ -31,12 +31,6 @@ def load_dataset(args):
             dataset = CoraGraphDataset()
         elif args.dataset == 'pubmed':
             dataset = PubmedGraphDataset()
-        elif args.dataset == 'questions':
-            dataset = QuestionsDataset()
-        elif args.dataset == 'amazon-ratings':
-            dataset = AmazonRatingsDataset()
-        elif args.dataset == 'roman-empire':
-            dataset = RomanEmpireDataset()
         else:
             dataset = CiteseerGraphDataset()
         g = dataset[0]
@@ -68,7 +62,7 @@ def load_dataset(args):
         num_nodes = g.number_of_nodes()
         adj = sp.csr_matrix((np.ones(len(src)), (src.cpu().numpy(), dst.cpu().numpy())), shape=(num_nodes, num_nodes))
     elif args.dataset in ['amazon_photo', 'amazon_cs', 'coauthor_cs', 'coauthor_phy']:
-        dataset = NPZDataset(args.dataset, root="./dataset/", verbose=False)
+        dataset = NPZDataset(args.dataset, root="../dataset/", verbose=False)
         g = dataset.graph
         splits = dataset.split_nodes()
         train_idx, valid_idx, test_idx = splits.train_nodes, splits.val_nodes, splits.test_nodes
