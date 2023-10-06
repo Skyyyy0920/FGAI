@@ -1,6 +1,6 @@
 dataset: coauthor_cs
-num_epochs: 400
-early_stopping: 20
+num_epochs: 600
+early_stopping: 100
 n_inject_max: 20
 n_edge_max: 20
 epsilon: 0.1
@@ -12,10 +12,10 @@ n_layers: 1
 feat_drop: 0.6
 attn_drop: 0.6
 lr: 0.001
-weight_decay: 0
-lambda_1: 0.08
-lambda_2: 0.01
-lambda_3: 0.02
-K: 60000
-K_rho: 50000
+weight_decay: 0.0005
+lambda_1: 0.1
+lambda_2: 1000
+lambda_3: 1000
+K: 200
+K_rho: 200
 save_path: ./FGAI_checkpoints/

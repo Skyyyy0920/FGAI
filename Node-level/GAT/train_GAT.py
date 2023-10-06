@@ -16,14 +16,14 @@ if __name__ == '__main__':
     # dataset ='ogbn-arxiv'
     # dataset='ogbn-products'
     # dataset='ogbn-papers100M'
-    # dataset = 'pubmed'
+    dataset = 'pubmed'
     # dataset='questions'
     # dataset='amazon-ratings'
     # dataset='roman-empire'
-    dataset = 'amazon_photo'
-    # dataset='amazon_cs'
+    # dataset = 'amazon_photo'
+    # dataset = 'amazon_cs'
     # dataset='coauthor_cs'
-    # dataset='coauthor_phy'
+    # dataset = 'coauthor_phy'
 
     with open(f"./optimized_hyperparameter_configurations/{dataset}.yml", 'r') as file:
         args = yaml.full_load(file)
@@ -61,7 +61,7 @@ if __name__ == '__main__':
                             n_layers=args.n_layers,
                             n_heads=args.n_heads,
                             feat_drop=args.feat_drop,
-                            attn_drop=args.attn_drop).to(args.device)
+                            attn_drop=args.attn_drop).to(device)
     optimizer = optim.Adam(GAT.parameters(),
                            lr=args.lr,
                            weight_decay=args.weight_decay)
@@ -94,7 +94,7 @@ if __name__ == '__main__':
         new_outputs[:orig_outputs.shape[0]], new_graph_repr[:orig_graph_repr.shape[0]], new_att[:orig_att.shape[0]]
     pred = torch.argmax(new_outputs[test_idx], dim=1)
     accuracy = accuracy_score(label[test_idx].cpu(), pred.cpu())
-    logging.info(f"Accuracy after attack: {accuracy}")
+    logging.info(f"Accuracy after attack: {accuracy:.4f}")
 
     TVD_score = TVD(orig_att, new_att) / len(orig_att)
     JSD_score = JSD(orig_att, new_att) / len(orig_att)

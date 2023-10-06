@@ -13,9 +13,6 @@ import torch.optim as optim
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-# device = 'cpu'
-
-
 if __name__ == '__main__':
     # dataset ='ogbn-arxiv'
     # dataset='ogbn-products'
@@ -24,10 +21,10 @@ if __name__ == '__main__':
     # dataset='questions'
     # dataset='amazon-ratings'
     # dataset='roman-empire'
-    dataset='amazon_photo'
-    # dataset='amazon_cs'
+    # dataset = 'amazon_photo'
+    # dataset = 'amazon_cs'
     # dataset='coauthor_cs'
-    # dataset='coauthor_phy'
+    dataset = 'coauthor_phy'
 
     # ==================================================================================================
     # 1. Get experiment args and seed
@@ -127,7 +124,7 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 6. Load pre-trained vanilla model
     # ==================================================================================================
-    tim = '_10-54'
+    tim = '_14-08'
     vanilla_model.load_state_dict(torch.load(f'./GAT_checkpoints/{dataset}{tim}/model_parameters.pth'))
 
     orig_outputs, orig_graph_repr, orig_att = \
@@ -159,7 +156,7 @@ if __name__ == '__main__':
         new_outputs[:FGAI_outputs.shape[0]], new_graph_repr[:FGAI_graph_repr.shape[0]], new_att[:FGAI_att.shape[0]]
     pred = torch.argmax(new_outputs[test_idx], dim=1)
     accuracy = accuracy_score(label[test_idx].cpu(), pred.cpu())
-    logging.info(f"Accuracy after attack: {accuracy}")
+    logging.info(f"Accuracy after attack: {accuracy:.4f}")
 
     TVD_score = TVD(FGAI_att, new_att) / len(new_att)
     JSD_score = JSD(FGAI_att, new_att) / len(new_att)

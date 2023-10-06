@@ -1,74 +1,45 @@
 import time
 import yaml
 import argparse
+import pandas as pd
 import torch.nn as nn
 import torch.optim as optim
 from utils import *
 from models import GNNGuard
 from load_dataset import load_dataset
 from trainer import VanillaTrainer
+from attackers import PGD
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-# device = 'cpu'
-
-
-def get_args():
-    parser = argparse.ArgumentParser(description="GNNGuard's args")
-
-    # Data
-    parser.add_argument('--dataset',
-                        type=str,
-                        # default='ogbn-arxiv',
-                        # default='ogbn-products',
-                        # default='ogbn-papers100M',
-                        # default='pubmed',
-                        # default='questions',
-                        # default='amazon-ratings',
-                        # default='roman-empire',
-                        default='amazon_photo',
-                        # default='amazon_cs',
-                        # default='coauthor_cs',
-                        # default='coauthor_phy',
-                        help='Dataset name')
-
-    # Experimental Setup
-    parser.add_argument('--num_epochs', type=int, default=200, help='Training epoch')
-    parser.add_argument('--n_inject_max', type=int, default=20)
-    parser.add_argument('--n_edge_max', type=int, default=40)
-    parser.add_argument('--epsilon', type=float, default=0.1)
-    parser.add_argument('--n_epoch_attack', type=int, default=10)
-
-    parser.add_argument('--hid_dim', type=int, default=8)
-    parser.add_argument('--n_heads', type=list, default=[8])
-    parser.add_argument('--n_layers', type=int, default=1)
-    parser.add_argument('--feat_drop', type=float, default=0.05)
-    parser.add_argument('--attn_drop', type=float, default=0.05)
-    parser.add_argument('--lr', type=float, default=1e-2)
-    parser.add_argument('--weight_decay', type=float, default=5e-4)
-
-    args = parser.parse_args()
-    return args
-
 
 if __name__ == '__main__':
-    args = get_args()
-    load_optimized_hyperparameter_configurations = True
-    if load_optimized_hyperparameter_configurations:
-        with open(f"./optimized_hyperparameter_configurations/{args.dataset}.yml", 'r') as file:
-            args = yaml.safe_load(file)
-        args = argparse.Namespace(**args)
+    # dataset ='ogbn-arxiv'
+    # dataset='ogbn-products'
+    # dataset='ogbn-papers100M'
+    dataset = 'pubmed'
+    # dataset='questions'
+    # dataset='amazon-ratings'
+    # dataset='roman-empire'
+    # dataset = 'amazon_photo'
+    # dataset = 'amazon_cs'
+    # dataset = 'coauthor_cs'
+    # dataset = 'coauthor_phy'
+
+    with open(f"./optimized_hyperparameter_configurations/{dataset}.yml", 'r') as file:
+        args = yaml.full_load(file)
+    args = argparse.Namespace(**args)
     args.device = device
 
     for handler in logging.root.handlers[:]:
         logging.root.removeHandler(handler)
     logging_time = time.strftime('%H-%M', time.localtime())
-    save_dir = os.path.join("GNNGuard_checkpoints", f"{args.dataset}_{logging_time}")
+    save_dir = os.path.join("GNNGuard_checkpoints", f"{dataset}_{logging_time}")
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
     logging.basicConfig(level=logging.INFO,
                         format='[%(asctime)s %(levelname)s]%(message)s',
                         datefmt='%Y-%m-%d %H:%M:%S',
-                        filename=os.path.join(save_dir, f'{args.dataset}.log'))
+                        filename=os.path.join(save_dir, f'{dataset}.log'))
     console = logging.StreamHandler()  # Simultaneously output to console
     console.setLevel(logging.INFO)
     console.setFormatter(logging.Formatter(fmt='[%(asctime)s %(levelname)s]%(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
@@ -84,44 +55,56 @@ if __name__ == '__main__':
     in_feats = features.shape[1]
 
     criterion = nn.CrossEntropyLoss()
-    GATGuard = GNNGuard(in_feats=in_feats,
-                        hid_dim=args.hid_dim,
-                        n_classes=num_classes,
-                        n_layers=args.n_layers,
-                        n_heads=args.n_heads,
-                        dropout=0.6).to(device)
-    optimizer = optim.Adam(GATGuard.parameters(),
+    guard = GNNGuard(in_feats=in_feats,
+                     hid_dim=args.hid_dim,
+                     n_classes=num_classes,
+                     n_layers=args.n_layers,
+                     n_heads=args.n_heads,
+                     dropout=0.6).to(device)
+    optimizer = optim.Adam(guard.parameters(),
                            lr=args.lr,
                            weight_decay=args.weight_decay)
 
-    total_params = sum(p.numel() for p in GATGuard.parameters())
+    total_params = sum(p.numel() for p in guard.parameters())
     logging.info(f"Total parameters: {total_params}")
-    logging.info(f"Model: {GATGuard}")
+    logging.info(f"Model: {guard}")
     logging.info(f"Optimizer: {optimizer}")
 
-    std_trainer = VanillaTrainer(GATGuard, criterion, optimizer, args)
+    std_trainer = VanillaTrainer(guard, criterion, optimizer, args)
+    std_trainer.train(features, adj, label, train_idx, valid_idx)
 
-    orig_outputs, orig_graph_repr, orig_att = std_trainer.train(features, adj, label, train_idx, valid_idx)
+    orig_outputs, orig_graph_repr, orig_att = \
+        evaluate_node_level(guard, features, adj, label, test_idx, num_classes == 2)
 
-    evaluate_node_level(GATGuard, criterion, features, adj, label, test_idx, num_classes == 2)
+    torch.save(guard.state_dict(), os.path.join(save_dir, 'model_parameters.pth'))
 
-    torch.save(GATGuard.state_dict(), os.path.join(save_dir, 'model_parameters.pth'))
-    tensor_dict = {'orig_outputs': orig_outputs, 'orig_graph_repr': orig_graph_repr, 'orig_att': orig_att}
-    torch.save(tensor_dict, os.path.join(save_dir, 'tensors.pth'))
+    attacker = PGD(epsilon=args.epsilon,
+                   n_epoch=args.n_epoch_attack,
+                   n_inject_max=args.n_inject_max,
+                   n_edge_max=args.n_edge_max,
+                   feat_lim_min=-1,
+                   feat_lim_max=1,
+                   device=device)
 
-    tim = '_19-41'
-    adj_perturbed = sp.load_npz(f'./vanilla_model/{args.dataset}{tim}/adj_delta.npz')
-    feats_perturbed = torch.load(f'./vanilla_model/{args.dataset}{tim}/feats_delta.pth').to(device)
-
-    GATGuard.eval()
-    new_outputs, new_graph_repr, new_att = GATGuard(torch.cat((features, feats_perturbed), dim=0), adj_perturbed)
+    guard.eval()
+    adj_delta, feats_delta = attacker.attack(guard, adj, features, test_idx, None)
+    new_outputs, new_graph_repr, new_att = guard(torch.cat((features, feats_delta), dim=0), adj_delta)
     new_outputs, new_graph_repr, new_att = \
         new_outputs[:orig_outputs.shape[0]], new_graph_repr[:orig_graph_repr.shape[0]], new_att[:orig_att.shape[0]]
+    pred = torch.argmax(new_outputs[test_idx], dim=1)
+    accuracy = accuracy_score(label[test_idx].cpu(), pred.cpu())
+    logging.info(f"Accuracy after attack: {accuracy:.4f}")
 
     TVD_score = TVD(orig_att, new_att) / len(orig_att)
     JSD_score = JSD(orig_att, new_att) / len(orig_att)
     logging.info(f"JSD: {JSD_score}")
     logging.info(f"TVD: {TVD_score}")
 
-    fidelity_pos, fidelity_neg = compute_fidelity(GATGuard, adj, features, label, test_idx)
-    logging.info(f"fidelity_pos: {fidelity_pos}, fidelity_neg: {fidelity_neg}")
+    sp.save_npz(os.path.join(save_dir, 'adj_delta.npz'), adj_delta)
+    torch.save(feats_delta, os.path.join(save_dir, 'feats_delta.pth'))
+
+    fidelity_pos_list, fidelity_neg_list = compute_fidelity(guard, adj, features, label, test_idx)
+    logging.info(f"fidelity_pos: {fidelity_pos_list}")
+    logging.info(f"fidelity_neg: {fidelity_neg_list}")
+    data = pd.DataFrame({'fidelity_pos': fidelity_pos_list, 'fidelity_neg': fidelity_neg_list})
+    data.to_csv(os.path.join(save_dir, 'fidelity_data.txt'), sep=',', index=False)

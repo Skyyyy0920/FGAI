@@ -1,5 +1,5 @@
 dataset: coauthor_phy
-num_epochs: 200
+num_epochs: 100
 n_inject_max: 20
 n_edge_max: 40
 epsilon: 0.1
