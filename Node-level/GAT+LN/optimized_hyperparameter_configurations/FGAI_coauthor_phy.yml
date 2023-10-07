@@ -1,0 +1,21 @@
+dataset: coauthor_phy
+num_epochs: 200
+early_stopping: 20
+n_inject_max: 20
+n_edge_max: 20
+epsilon: 0.05
+n_epoch_attack: 10
+hid_dim: 8
+n_heads:
+- 8
+n_layers: 1
+feat_drop: 0.6
+attn_drop: 0.6
+lr: 0.01
+weight_decay: 0.0005
+lambda_1: 0.05
+lambda_2: 1
+lambda_3: 1
+K: 10000
+K_rho: 10000
+save_path: ./FGAI_checkpoints/
