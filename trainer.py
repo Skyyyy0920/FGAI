@@ -2,7 +2,7 @@ from utils import *
 import torch.nn.functional as F
 
 
-class VanillaTrainer:
+class VanillaTrainer(object):
     def __init__(self, standard_model, criterion, optimizer, args):
         self.model = standard_model
         self.criterion = criterion
@@ -33,7 +33,44 @@ class VanillaTrainer:
                          f'Val Loss: {val_loss.item():.4f} | Val Accuracy: {val_accuracy:.4f}')
 
 
-class FGAITrainer:
+class AdvTrainer(object):
+    def __init__(self, model, optimizer, criterion, attacker, args):
+        self.model = model
+        self.optimizer = optimizer
+        self.criterion = criterion
+        self.attacker = attacker
+        self.device = args.device
+        self.num_epochs = args.num_epochs
+
+    def train(self, feats, adj, label, idx_split):
+        train_idx, valid_idx, test_idx = idx_split
+        for epoch in range(self.num_epochs):
+            self.model.train()
+
+            target_mask = torch.ones(feats.shape[0]).bool()
+            adj_delta, feats_delta = self.attacker.attack(self.model, adj, feats, target_mask, None)
+            outputs, graph_repr, att = self.model(torch.cat((feats, feats_delta), dim=0), adj_delta)
+            outputs, graph_repr, att = outputs[:feats.shape[0]], graph_repr[:feats.shape[0]], att[:feats.shape[0]]
+            loss = self.criterion(outputs[train_idx], label[train_idx])
+
+            # Backpropagation
+            self.optimizer.zero_grad()
+            loss.backward()
+            self.optimizer.step()
+
+            self.model.eval()
+            with torch.no_grad():
+                val_outputs, orig_graph_repr, _ = self.model(feats, adj)
+                val_pred = torch.argmax(val_outputs[valid_idx], dim=1)
+                val_accuracy = accuracy_score(label[valid_idx].cpu(), val_pred.cpu())
+                val_loss = F.cross_entropy(val_outputs[valid_idx], label[valid_idx])
+
+            logging.info(f'Epoch [{epoch + 1}/{self.num_epochs}] | Train Loss: {loss.item():.4f} | '
+                         f'Val loss: {val_loss} | Val Accuracy: {val_accuracy:.4f}')
+            logging.info(f'Loss item: {loss}.')
+
+
+class FGAITrainer(object):
     def __init__(self, FGAI, optimizer, attacker_delta, attacker_rho, args):
         self.model = FGAI
         self.optimizer = optimizer
@@ -70,14 +107,12 @@ class FGAITrainer:
             adj_rho, feats_rho = self.attacker_rho.attack(self.model, adj, features, target_mask, None)
             new_outputs_2, new_graph_repr_2, new_att_2 = self.model(torch.cat((features, feats_rho), dim=0), adj_rho)
             stability_of_explanation_loss = topK_overlap_loss(new_att_2[:FGAI_att.shape[0]], FGAI_att, adj, self.K,
-                                                               'l1')
-            # stability_of_explanation_loss = topK_overlap_loss(new_att[:FGAI_att.shape[0]], FGAI_att, adj, self.K,
-            #                                                    'l1')
+                                                              'l1')
 
             # 4. Similarity of Explanation
             # similarity_of_explanation_loss += topK_overlap_loss(FGAI_att, orig_att, adj, self.K, 'l1')
             similarity_of_explanation_loss = topK_overlap_loss(FGAI_att, orig_att[:FGAI_att.shape[0]], adj, self.K,
-                                                                'l1')
+                                                               'l1')
 
             loss = closeness_of_prediction_loss + adversarial_loss * self.lambda_1 + \
                    stability_of_explanation_loss * self.lambda_2 + similarity_of_explanation_loss * self.lambda_3

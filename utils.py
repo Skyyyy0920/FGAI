@@ -229,3 +229,13 @@ def compute_fidelity(model, adj, feats, labels, test_idx):
         fidelity_neg_list.append(round(fidelity_neg.item(), 4))
 
     return fidelity_pos_list, fidelity_neg_list
+
+
+def feature_normalize(features):
+    x_sum = torch.sum(features, dim=1)
+    x_rev = x_sum.pow(-1).flatten()
+    x_rev[torch.isnan(x_rev)] = 0.0
+    x_rev[torch.isinf(x_rev)] = 0.0
+    features = features * x_rev.unsqueeze(-1).expand_as(features)
+
+    return features
