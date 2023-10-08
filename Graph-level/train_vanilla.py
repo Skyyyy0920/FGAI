@@ -43,7 +43,6 @@ def get_args():
 
 if __name__ == '__main__':
     args = get_args()
-    setup_seed(args.seed)  # make the experiment repeatable
     print(f"Using device: {args.device}")
     print(f"PyTorch Version: {torch.__version__}")
     print('\n' + '=' * 36 + ' Setup logger ' + '=' * 36)

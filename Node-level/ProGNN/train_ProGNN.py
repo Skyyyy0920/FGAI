@@ -9,6 +9,7 @@ from deeprobust.graph.utils import preprocess
 from deeprobust.graph.global_attack import Random
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = 'cpu'
 
 
 def get_args():
@@ -20,11 +21,11 @@ def get_args():
                         # default='ogbn-arxiv',
                         # default='ogbn-products',
                         # default='ogbn-papers100M',
-                        default='pubmed',
+                        # default='pubmed',
                         # default='questions',
                         # default='amazon-ratings',
                         # default='roman-empire',
-                        # default='amazon_photo',
+                        default='amazon_photo',
                         # default='amazon_cs',
                         help='Dataset name')
 
