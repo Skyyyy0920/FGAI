@@ -62,8 +62,7 @@ if __name__ == '__main__':
                                n_layers=args.n_layers,
                                n_heads=args.n_heads,
                                feat_drop=args.feat_drop,
-                               attn_drop=args.attn_drop,
-                               LayerNorm=True).to(device)
+                               attn_drop=args.attn_drop).to(device)
     optimizer = optim.Adam(GAT_AT.parameters(),
                            lr=args.lr,
                            weight_decay=args.weight_decay)

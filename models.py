@@ -16,10 +16,6 @@ from utils import k_shell_algorithm, feature_normalize
 import torch.optim as optim
 from deeprobust.graph.utils import accuracy
 from deeprobust.graph.defense.pgd import PGD, prox_operators
-from scipy.sparse import lil_matrix
-from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.preprocessing import normalize
-from grb.utils.normalize import GCNAdjNorm
 
 
 class GATConv(nn.Module):

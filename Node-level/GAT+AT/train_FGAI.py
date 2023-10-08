@@ -12,6 +12,7 @@ from attackers import PGD
 import torch.optim as optim
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = 'cpu'
 
 if __name__ == '__main__':
     # dataset ='ogbn-arxiv'
@@ -22,9 +23,9 @@ if __name__ == '__main__':
     # dataset='roman-empire'
     # dataset = 'pubmed'
     # dataset = 'amazon_photo'
-    dataset = 'amazon_cs'
+    # dataset = 'amazon_cs'
     # dataset='coauthor_cs'
-    # dataset = 'coauthor_phy'
+    dataset = 'coauthor_phy'
 
     # ==================================================================================================
     # 1. Get experiment args and seed
@@ -35,7 +36,6 @@ if __name__ == '__main__':
         args = yaml.safe_load(file)
     args = argparse.Namespace(**args)
     args.device = device
-    args.lambda_1 = 0.1
 
     # ==================================================================================================
     # 2. Setup logger
@@ -125,7 +125,7 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 6. Load pre-trained vanilla model
     # ==================================================================================================
-    tim = '_22-09'
+    tim = '_20-11'
     vanilla_model.load_state_dict(torch.load(f'./GAT_checkpoints/{dataset}{tim}/model_parameters.pth'))
 
     orig_outputs, orig_graph_repr, orig_att = \

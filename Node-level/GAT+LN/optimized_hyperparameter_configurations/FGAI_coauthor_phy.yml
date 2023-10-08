@@ -1,6 +1,6 @@
 dataset: coauthor_phy
 num_epochs: 200
-early_stopping: 20
+early_stopping: 200
 n_inject_max: 20
 n_edge_max: 20
 epsilon: 0.05
