@@ -26,8 +26,8 @@ def ranking_value(orig_att):
 
 # dataset = 'amazon_photo'
 # dataset = 'amazon_cs'
-# dataset = 'pubmed'
-dataset = 'coauthor_phy'
+dataset = 'pubmed'
+# dataset = 'coauthor_phy'
 # dataset='coauthor_cs'
 
 exp = 'GAT'
@@ -55,8 +55,8 @@ FGAI = GATNodeClassifier(in_feats=in_feats,
                          feat_drop=args.feat_drop,
                          attn_drop=args.attn_drop).to(args.device)
 
-tim1 = '_14-08'
-tim2 = '_10-06_17-43'
+tim1 = '_10-38'
+tim2 = '_10-06_10-41'
 
 vanilla.load_state_dict(torch.load(f'./{exp}/GAT_checkpoints/{dataset}{tim1}/model_parameters.pth'))
 FGAI.load_state_dict(torch.load(f'./{exp}/FGAI_checkpoints/{dataset}{tim2}/FGAI_parameters.pth'))
@@ -90,7 +90,7 @@ print(f"FGAI accuracy after attack: {accuracy:.4f}")
 # for node_ID in g_dgl.nodes():
 #     neighbor_list = []
 #     neighbors = g_dgl.successors(node_ID)
-#     if 80 < len(neighbors) < 100:
+#     if 30 < len(neighbors) < 100:
 #         print(node_ID)
 # exit()
 
@@ -99,12 +99,14 @@ att_list, att_list_new = [], []
 att_list_FGAI, att_list_new_FGAI = [], []
 neighbor_list = []
 
-node_id = 0
+# node_id = 18811
+# node_id = 16462
+node_id = 735
 neighbors = g_dgl.successors(node_id)
 neighbor_list.append(neighbors.numpy())
 indices = np.where(src == node_id)[0]
 
-kkk = 40
+kkk = 25
 topk_values_orig, topk_indices_orig = torch.topk(orig_att[indices], k=kkk, largest=True)
 topk_values_new, topk_indices_new = torch.topk(new_att[indices], k=kkk, largest=True)
 topk_values_FGAI, topk_indices_FGAI = torch.topk(FGAI_att[indices], k=kkk, largest=True)
