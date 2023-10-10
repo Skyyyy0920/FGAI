@@ -9,11 +9,23 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 import matplotlib.gridspec as gridspec
 
-# dataset = 'amazon_photo'
+
+def ranking_value(orig_att):
+    K = int(len(orig_att) * 0.4)
+    sorted_indices = torch.argsort(orig_att, descending=True)
+    ranks = torch.arange(1, len(orig_att) + 1, dtype=torch.float32)
+    discrete_values = (len(orig_att) - ranks + 1) / len(orig_att)
+    discrete_values[ranks > K] = 0
+    discrete_values[ranks <= K] = 1
+    sorted_discrete_values = discrete_values[sorted_indices]
+
+    return sorted_discrete_values
+
+
+dataset = 'amazon_photo'
 # dataset = 'amazon_cs'
+# dataset='coauthor_cs'
 # dataset = 'coauthor_phy'
-dataset = 'pubmed'
-# dataset = 'ogbn-arxiv'
 
 exp = 'GAT'
 with open(f"./{exp}/optimized_hyperparameter_configurations/FGAI_{dataset}.yml", 'r') as file:
@@ -40,8 +52,8 @@ FGAI = GATNodeClassifier(in_feats=in_feats,
                          feat_drop=args.feat_drop,
                          attn_drop=args.attn_drop).to(args.device)
 
-tim1 = '_10-38'
-tim2 = '_10-06_10-41'
+tim1 = '_10-54'
+tim2 = '_10-06_11-18'
 
 vanilla.load_state_dict(torch.load(f'./{exp}/GAT_checkpoints/{dataset}{tim1}/model_parameters.pth'))
 FGAI.load_state_dict(torch.load(f'./{exp}/FGAI_checkpoints/{dataset}{tim2}/FGAI_parameters.pth'))
@@ -77,48 +89,16 @@ att_list, att_list_new = [], []
 att_list_FGAI, att_list_new_FGAI = [], []
 neighbor_list = []
 indices_list = []
-# count = 0
-# for node_id in g_dgl.nodes():
-#     neighbors = g_dgl.successors(node_id)
-#     if len(neighbors) <= 50:
-#         continue
-#     count += 1
-#     if count > 3:
-#         break
-#     neighbor_list.append(neighbors.numpy())
-#     indices = np.where(src == node_id)[0]
-#     indices_list.append(indices)
-#     att_list.append(orig_att[indices])
-#     att_list_new.append(new_att[indices].detach())
-#     att_list_FGAI.append(FGAI_att[indices])
-#     att_list_new_FGAI.append(new_FGAI_att[indices].detach())
 
-# for node_ID in g_dgl.nodes():
-#     neighbor_list = []
-#     neighbors = g_dgl.successors(node_ID)
-#     if len(neighbors) == 0:
-#         continue
-#     for node_id in neighbors:
-#         neighbors = g_dgl.successors(node_id)
-#         neighbor_list.append(neighbors.numpy())
-#     neighbor_ids = np.concatenate(neighbor_list)
-#     if 50 < len(neighbor_ids) < 80:
-#         print(node_ID)
-# exit()
-
-neighbors = g_dgl.successors(192)
-print(neighbors)
-print(len(neighbors))
-
-for node_id in neighbors:
-    neighbors = g_dgl.successors(node_id)
-    neighbor_list.append(neighbors.numpy())
-    indices = np.where(src == node_id)[0]
-    indices_list.append(indices)
-    att_list.append(orig_att[indices])
-    att_list_new.append(new_att[indices].detach())
-    att_list_FGAI.append(FGAI_att[indices])
-    att_list_new_FGAI.append(new_FGAI_att[indices].detach())
+node_id = 6666
+neighbors = g_dgl.successors(node_id)
+neighbor_list.append(neighbors.numpy())
+indices = np.where(src == node_id)[0]
+indices_list.append(indices)
+att_list.append(ranking_value(orig_att[indices]))
+att_list_new.append(ranking_value(new_att[indices].detach()))
+att_list_FGAI.append(ranking_value(FGAI_att[indices]))
+att_list_new_FGAI.append(ranking_value(new_FGAI_att[indices].detach()))
 
 neighbor_ids = np.concatenate(neighbor_list)
 att_color = np.concatenate(att_list)
@@ -128,81 +108,54 @@ att_color_new_FGAI = np.concatenate(att_list_new_FGAI)
 select_nodes = np.unique(neighbor_ids)
 select_edges = np.concatenate(indices_list)
 
-max_value = max(att_color.max(), att_color_new.max(), att_color_FGAI.max(), att_color_new_FGAI.max())
-
-print(len(select_nodes))
-if len(select_nodes) > 80:
-    exit()
-
-# 创建图形和子图
 fig = plt.figure(figsize=(12, 6))
-gs = gridspec.GridSpec(1, 3, width_ratios=[1, 1, 0.05])
+gs = gridspec.GridSpec(1, 2, width_ratios=[1, 1])
 # edge_cmap = plt.get_cmap("coolwarm")
 # edge_cmap = edge_cmap.reversed()
 # edge_cmap = plt.cm.Blues
 edge_cmap = plt.cm.Reds
 # edge_cmap = plt.cm.Greens
-power_rate = 1/3
+power_rate = 1
 
 sub_g = dgl.edge_subgraph(g_dgl, select_edges)
 sub_g = dgl.to_networkx(sub_g)
 pos = nx.random_layout(sub_g)
 
 ax1 = plt.subplot(gs[0])
-# colors = att_color / max_value
-colors = att_color / att_color.max()
-colors = np.power(colors, power_rate)
+colors = att_color
 edges = nx.draw_networkx_edges(sub_g, pos=pos, edge_color=colors,
                                width=1.5, edge_cmap=edge_cmap, edge_vmin=0, alpha=0.9, ax=ax1)
 nx.draw_networkx_nodes(sub_g, pos, nodelist=sub_g.nodes(), node_color='#5e86c1', alpha=0.95, node_size=125, ax=ax1)
-# nx.draw_networkx_labels(g, pos, labels=node_labels, font_color='blue')
 ax1.set_title("Original")
 
 ax2 = plt.subplot(gs[1])
-# colors = att_color_new / max_value
-colors = att_color_new / att_color_new.max()
-colors = np.power(colors, power_rate)
+colors = att_color_new
 edges = nx.draw_networkx_edges(sub_g, pos=pos, edge_color=colors,
                                width=1.5, edge_cmap=edge_cmap, edge_vmin=0, alpha=0.9, ax=ax2)
 nx.draw_networkx_nodes(sub_g, pos, nodelist=sub_g.nodes(), node_color='#5e86c1', alpha=0.95, node_size=125, ax=ax2)
 ax2.set_title("Perturbed")
 
-cax = plt.subplot(gs[2])
-pc = mpl.collections.PatchCollection([], cmap=edge_cmap)
-pc.set_array(colors)
-plt.colorbar(pc, cax=cax)
-
 plt.tight_layout()
-plt.savefig(f"./visualization_results/{exp}_{dataset}_vanilla.pdf", format="pdf")
+plt.savefig(f"./visualization_results/{exp}_{dataset}_vanilla_topK.pdf", format="pdf")
 plt.show()
 
 fig = plt.figure(figsize=(12, 6))
-gs = gridspec.GridSpec(1, 3, width_ratios=[1, 1, 0.05])
+gs = gridspec.GridSpec(1, 2, width_ratios=[1, 1])
 
 ax1 = plt.subplot(gs[0])
-# colors = att_color_FGAI / max_value
-colors = att_color_FGAI / att_color_FGAI.max()
-colors = np.power(colors, power_rate)
+colors = att_color_FGAI
 edges = nx.draw_networkx_edges(sub_g, pos=pos, edge_color=colors,
                                width=1.5, edge_cmap=edge_cmap, edge_vmin=0, alpha=0.9, ax=ax1)
 nx.draw_networkx_nodes(sub_g, pos, nodelist=sub_g.nodes(), node_color='#5e86c1', alpha=0.95, node_size=125, ax=ax1)
-# nx.draw_networkx_labels(g, pos, labels=node_labels, font_color='blue')
 ax1.set_title("Original")
 
 ax2 = plt.subplot(gs[1])
-# colors = att_color_new_FGAI / max_value
-colors = att_color_new_FGAI / att_color_new_FGAI.max()
-colors = np.power(colors, power_rate)
+colors = att_color_new_FGAI
 edges = nx.draw_networkx_edges(sub_g, pos=pos, edge_color=colors,
                                width=1.5, edge_cmap=edge_cmap, edge_vmin=0, alpha=0.9, ax=ax2)
 nx.draw_networkx_nodes(sub_g, pos, nodelist=sub_g.nodes(), node_color='#5e86c1', alpha=0.95, node_size=125, ax=ax2)
 ax2.set_title("Perturbed")
 
-cax = plt.subplot(gs[2])
-pc = mpl.collections.PatchCollection([], cmap=edge_cmap)
-pc.set_array(colors)
-plt.colorbar(pc, cax=cax)
-
 plt.tight_layout()
-plt.savefig(f"./visualization_results/{exp}_{dataset}_FGAI.pdf", format="pdf")
+plt.savefig(f"./visualization_results/{exp}_{dataset}_FGAI_topK.pdf", format="pdf")
 plt.show()
