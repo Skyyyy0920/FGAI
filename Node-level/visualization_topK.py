@@ -84,15 +84,23 @@ FGAI_pred = torch.argmax(new_FGAI_outputs[test_idx], dim=1)
 accuracy = accuracy_score(label[test_idx].cpu(), FGAI_pred.cpu())
 print(f"FGAI accuracy after attack: {accuracy:.4f}")
 
+topk_values_orig, topk_indices_orig = torch.topk(orig_att, k=100, largest=True)
+topk_values_new, topk_indices_new = torch.topk(new_att, k=100, largest=True)
+topk_values_FGAI, topk_indices_FGAI = torch.topk(FGAI_att, k=100, largest=True)
+topk_values_FGAI_new, topk_indices_FGAI_new = torch.topk(new_FGAI_att, k=100, largest=True)
+
 src, dst = g_dgl.edges()
 att_list, att_list_new = [], []
 att_list_FGAI, att_list_new_FGAI = [], []
-neighbor_list = []
+neighbor_list_orig = []
 indices_list = []
+
+neighbor_list_orig.append(src[topk_indices_orig])
+neighbor_list_orig.append(dst[topk_indices_orig])
 
 node_id = 6666
 neighbors = g_dgl.successors(node_id)
-neighbor_list.append(neighbors.numpy())
+neighbor_list_orig.append(neighbors.numpy())
 indices = np.where(src == node_id)[0]
 indices_list.append(indices)
 att_list.append(ranking_value(orig_att[indices]))
@@ -100,12 +108,12 @@ att_list_new.append(ranking_value(new_att[indices].detach()))
 att_list_FGAI.append(ranking_value(FGAI_att[indices]))
 att_list_new_FGAI.append(ranking_value(new_FGAI_att[indices].detach()))
 
-neighbor_ids = np.concatenate(neighbor_list)
+neighbor_ids_orig = np.concatenate(neighbor_list_orig)
 att_color = np.concatenate(att_list)
 att_color_new = np.concatenate(att_list_new)
 att_color_FGAI = np.concatenate(att_list_FGAI)
 att_color_new_FGAI = np.concatenate(att_list_new_FGAI)
-select_nodes = np.unique(neighbor_ids)
+select_nodes = np.unique(neighbor_ids_orig)
 select_edges = np.concatenate(indices_list)
 
 fig = plt.figure(figsize=(12, 6))
