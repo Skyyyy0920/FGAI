@@ -4,7 +4,6 @@ import argparse
 from models import GATNodeClassifier
 from utils import *
 from load_dataset import load_dataset
-import matplotlib as mpl
 import networkx as nx
 import matplotlib.pyplot as plt
 import matplotlib as mpl
@@ -77,11 +76,41 @@ att_list, att_list_new = [], []
 att_list_FGAI, att_list_new_FGAI = [], []
 neighbor_list = []
 indices_list = []
-for node_id in g_dgl.nodes():
+# count = 0
+# for node_id in g_dgl.nodes():
+#     neighbors = g_dgl.successors(node_id)
+#     if len(neighbors) <= 50:
+#         continue
+#     count += 1
+#     if count > 3:
+#         break
+#     neighbor_list.append(neighbors.numpy())
+#     indices = np.where(src == node_id)[0]
+#     indices_list.append(indices)
+#     att_list.append(orig_att[indices])
+#     att_list_new.append(new_att[indices].detach())
+#     att_list_FGAI.append(FGAI_att[indices])
+#     att_list_new_FGAI.append(new_FGAI_att[indices].detach())
+
+# for node_ID in g_dgl.nodes():
+#     neighbor_list = []
+#     neighbors = g_dgl.successors(node_ID)
+#     if len(neighbors) == 0:
+#         continue
+#     for node_id in neighbors:
+#         neighbors = g_dgl.successors(node_id)
+#         neighbor_list.append(neighbors.numpy())
+#     neighbor_ids = np.concatenate(neighbor_list)
+#     if len(neighbor_ids) < 80:
+#         print(node_ID)
+# exit()
+
+neighbors = g_dgl.successors(7609)
+print(neighbors)
+print(len(neighbors))
+
+for node_id in neighbors:
     neighbors = g_dgl.successors(node_id)
-    if node_id > 4:
-        break
-    print(node_id)
     neighbor_list.append(neighbors.numpy())
     indices = np.where(src == node_id)[0]
     indices_list.append(indices)
@@ -98,6 +127,12 @@ att_color_new_FGAI = np.concatenate(att_list_new_FGAI)
 select_nodes = np.unique(neighbor_ids)
 select_edges = np.concatenate(indices_list)
 
+max_value = max(att_color.max(), att_color_new.max(), att_color_FGAI.max(), att_color_new_FGAI.max())
+
+print(len(select_nodes))
+if len(select_nodes) > 80:
+    exit()
+
 # 创建图形和子图
 fig = plt.figure(figsize=(12, 6))
 gs = gridspec.GridSpec(1, 3, width_ratios=[1, 1, 0.05])
@@ -106,13 +141,16 @@ gs = gridspec.GridSpec(1, 3, width_ratios=[1, 1, 0.05])
 # edge_cmap = plt.cm.Blues
 edge_cmap = plt.cm.Reds
 # edge_cmap = plt.cm.Greens
+power_rate = 1
 
 sub_g = dgl.edge_subgraph(g_dgl, select_edges)
 sub_g = dgl.to_networkx(sub_g)
 pos = nx.random_layout(sub_g)
 
 ax1 = plt.subplot(gs[0])
-colors = np.power(att_color, 1 / 2)
+# colors = np.power(att_color, power_rate) / max_value
+# colors = att_color / max_value
+colors = att_color / att_color.max()
 edges = nx.draw_networkx_edges(sub_g, pos=pos, edge_color=colors,
                                width=1.5, edge_cmap=edge_cmap, edge_vmin=0, alpha=0.9, ax=ax1)
 nx.draw_networkx_nodes(sub_g, pos, nodelist=sub_g.nodes(), node_color='#5e86c1', alpha=0.95, node_size=125, ax=ax1)
@@ -120,7 +158,9 @@ nx.draw_networkx_nodes(sub_g, pos, nodelist=sub_g.nodes(), node_color='#5e86c1',
 ax1.set_title("Original")
 
 ax2 = plt.subplot(gs[1])
-colors = np.power(att_color_new, 1 / 2)
+# colors = np.power(att_color_new, power_rate) / max_value
+# colors = att_color_new / max_value
+colors = att_color_new / att_color_new.max()
 edges = nx.draw_networkx_edges(sub_g, pos=pos, edge_color=colors,
                                width=1.5, edge_cmap=edge_cmap, edge_vmin=0, alpha=0.9, ax=ax2)
 nx.draw_networkx_nodes(sub_g, pos, nodelist=sub_g.nodes(), node_color='#5e86c1', alpha=0.95, node_size=125, ax=ax2)
@@ -139,7 +179,9 @@ fig = plt.figure(figsize=(12, 6))
 gs = gridspec.GridSpec(1, 3, width_ratios=[1, 1, 0.05])
 
 ax1 = plt.subplot(gs[0])
-colors = np.power(att_color_FGAI, 1 / 2)
+# colors = np.power(att_color_FGAI, power_rate) / max_value
+# colors = att_color_FGAI / max_value
+colors = att_color_FGAI / att_color_FGAI.max()
 edges = nx.draw_networkx_edges(sub_g, pos=pos, edge_color=colors,
                                width=1.5, edge_cmap=edge_cmap, edge_vmin=0, alpha=0.9, ax=ax1)
 nx.draw_networkx_nodes(sub_g, pos, nodelist=sub_g.nodes(), node_color='#5e86c1', alpha=0.95, node_size=125, ax=ax1)
@@ -147,7 +189,9 @@ nx.draw_networkx_nodes(sub_g, pos, nodelist=sub_g.nodes(), node_color='#5e86c1',
 ax1.set_title("Original")
 
 ax2 = plt.subplot(gs[1])
-colors = np.power(att_color_new_FGAI, 1 / 2)
+# colors = np.power(att_color_new_FGAI, power_rate) / max_value
+# colors = att_color_new_FGAI / max_value
+colors = att_color_new_FGAI / att_color_new_FGAI.max()
 edges = nx.draw_networkx_edges(sub_g, pos=pos, edge_color=colors,
                                width=1.5, edge_cmap=edge_cmap, edge_vmin=0, alpha=0.9, ax=ax2)
 nx.draw_networkx_nodes(sub_g, pos, nodelist=sub_g.nodes(), node_color='#5e86c1', alpha=0.95, node_size=125, ax=ax2)
