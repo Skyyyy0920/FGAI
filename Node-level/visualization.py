@@ -1,91 +1,15 @@
-import matplotlib.pyplot as plt
-import networkx as nx
-import argparse
-import torch
-import logging
-import scipy.sparse as sp
-from dgl.data import *
-import yaml
-from ogb.nodeproppred import DglNodePropPredDataset
-from supplement_dataset import *
-from graphgallery.datasets import NPZDataset
-from models import GATNodeClassifier
 import dgl
 import yaml
-import time
-import zipfile
 import argparse
-import pandas as pd
-from pathlib import Path
 from models import GATNodeClassifier
 from utils import *
-from trainer import FGAITrainer
 from load_dataset import load_dataset
-from attackers import PGD
-import torch.optim as optim
+import matplotlib as mpl
+import networkx as nx
+import matplotlib.pyplot as plt
+import matplotlib as mpl
+import matplotlib.gridspec as gridspec
 
-
-def load_dataset(args):
-    if args.dataset in ['cora', 'pubmed', 'citeseer']:
-        if args.dataset == 'cora':
-            dataset = CoraGraphDataset()
-        elif args.dataset == 'pubmed':
-            dataset = PubmedGraphDataset()
-        else:
-            dataset = CiteseerGraphDataset()
-        g = dataset[0]
-        print(f"Total edges before adding self-loop {g.number_of_edges()}")
-        g = g.remove_self_loop().add_self_loop()
-        print(f"Total edges after adding self-loop {g.number_of_edges()}")
-        num_classes = dataset.num_classes
-        train_idx, valid_idx, test_idx = g.ndata['train_mask'], g.ndata['val_mask'], g.ndata['test_mask']
-        feats, label = g.ndata["feat"], g.ndata['label']
-        src, dst = g.edges()
-        num_nodes = g.number_of_nodes()
-        adj = sp.csr_matrix((np.ones(len(src)), (src.cpu().numpy(), dst.cpu().numpy())), shape=(num_nodes, num_nodes))
-    elif args.dataset in ['questions', 'amazon-ratings', 'roman-empire']:
-        if args.dataset == 'questions':
-            dataset = QuestionsDataset()
-        elif args.dataset == 'amazon-ratings':
-            dataset = AmazonRatingsDataset()
-        else:
-            dataset = RomanEmpireDataset()
-        g = dataset[0]
-        print(f"Total edges before adding self-loop {g.number_of_edges()}")
-        g = g.remove_self_loop().add_self_loop()
-        print(f"Total edges after adding self-loop {g.number_of_edges()}")
-        num_classes = dataset.num_classes
-        tra_idx, val_idx, test_idx = g.ndata['train_mask'][:, 0], g.ndata['val_mask'][:, 0], g.ndata['test_mask'][:, 0]
-        train_idx, valid_idx, test_idx = tra_idx.squeeze(), val_idx.squeeze(), test_idx.squeeze()
-        feats, label = g.ndata["feat"], g.ndata['label']
-        src, dst = g.edges()
-        num_nodes = g.number_of_nodes()
-        adj = sp.csr_matrix((np.ones(len(src)), (src.cpu().numpy(), dst.cpu().numpy())), shape=(num_nodes, num_nodes))
-    elif args.dataset in ['amazon_photo', 'amazon_cs', 'coauthor_cs', 'coauthor_phy']:
-        dataset = NPZDataset(args.dataset, root="./dataset/", verbose=False)
-        g = dataset.graph
-        splits = dataset.split_nodes()
-        train_idx, valid_idx, test_idx = splits.train_nodes, splits.val_nodes, splits.test_nodes
-        train_idx, valid_idx, test_idx = torch.tensor(train_idx), torch.tensor(valid_idx), torch.tensor(test_idx)
-        feats, label = torch.tensor(g.x), torch.tensor(g.y, dtype=torch.int64)
-        num_classes = g.num_classes
-        adj = g.adj_matrix
-        adj = adj + adj.transpose()
-        num_nodes = g.num_nodes
-    else:
-        raise ValueError(f"Unknown dataset name: {args.dataset}")
-
-    logging.info(f"num_nodes: {num_nodes}")
-    return adj, feats.to(args.device), label.to(args.device), train_idx, valid_idx, test_idx, num_classes, g
-
-
-# dataset ='ogbn-arxiv'
-# dataset='ogbn-products'
-# dataset='ogbn-papers100M'
-# dataset='questions'
-# dataset='amazon-ratings'
-# dataset='roman-empire'
-# dataset = 'pubmed'
 dataset = 'amazon_photo'
 # dataset = 'amazon_cs'
 # dataset='coauthor_cs'
@@ -97,17 +21,17 @@ with open(f"./{exp}/optimized_hyperparameter_configurations/FGAI_{dataset}.yml",
 args = argparse.Namespace(**args)
 args.device = 'cpu'
 
-adj, feats, label, train_idx, valid_idx, test_idx, num_classes, g = load_dataset(args)
+adj, feats, label, train_idx, valid_idx, test_idx, num_classes = load_dataset(args)
 in_feats = feats.shape[1]
-g = dgl.from_scipy(adj).to(args.device)
+g_dgl = dgl.from_scipy(adj).to(args.device)
 
-vanilla_model = GATNodeClassifier(in_feats=in_feats,
-                                  hid_dim=args.hid_dim,
-                                  n_classes=num_classes,
-                                  n_layers=args.n_layers,
-                                  n_heads=args.n_heads,
-                                  feat_drop=args.feat_drop,
-                                  attn_drop=args.attn_drop).to(args.device)
+vanilla = GATNodeClassifier(in_feats=in_feats,
+                            hid_dim=args.hid_dim,
+                            n_classes=num_classes,
+                            n_layers=args.n_layers,
+                            n_heads=args.n_heads,
+                            feat_drop=args.feat_drop,
+                            attn_drop=args.attn_drop).to(args.device)
 FGAI = GATNodeClassifier(in_feats=in_feats,
                          hid_dim=args.hid_dim,
                          n_classes=num_classes,
@@ -119,37 +43,121 @@ FGAI = GATNodeClassifier(in_feats=in_feats,
 tim1 = '_10-54'
 tim2 = '_10-06_11-18'
 
-vanilla_model.load_state_dict(torch.load(f'./{exp}/GAT_checkpoints/{dataset}{tim1}/model_parameters.pth'))
+vanilla.load_state_dict(torch.load(f'./{exp}/GAT_checkpoints/{dataset}{tim1}/model_parameters.pth'))
 FGAI.load_state_dict(torch.load(f'./{exp}/FGAI_checkpoints/{dataset}{tim2}/FGAI_parameters.pth'))
 
-orig_outputs, orig_graph_repr, orig_att = \
-    evaluate_node_level(vanilla_model, feats, adj, label, test_idx, num_classes == 2)
+orig_outputs, _, orig_att = evaluate_node_level(vanilla, feats, adj, label, test_idx, num_classes == 2)
 pred = torch.argmax(orig_outputs[test_idx], dim=1)
 accuracy = accuracy_score(label[test_idx].cpu(), pred.cpu())
 print(f"vanilla accuracy: {accuracy:.4f}")
-FGAI_outputs, FGAI_graph_repr, FGAI_att = \
-    evaluate_node_level(FGAI, feats, adj, label, test_idx, num_classes == 2)
+FGAI_outputs, _, FGAI_att = evaluate_node_level(FGAI, feats, adj, label, test_idx, num_classes == 2)
 pred = torch.argmax(FGAI_outputs[test_idx], dim=1)
 accuracy = accuracy_score(label[test_idx].cpu(), pred.cpu())
 print(f"FGAI accuracy: {accuracy:.4f}")
 
-g.edata['a'] = orig_att
-g.ndata['feat'] = feats[:, 0]
-nx_g = dgl.to_networkx(g, node_attrs=['feat'], edge_attrs=['a'])
-print(nx_g)
-pos = nx.spring_layout(nx_g)  # Seed layout for reproducibility
-colors = range(200)
-edge_colors = [d['attention'] for u, v, d in nx_g.edges(data=True)]
-cmap = plt.cm.jet  # 使用jet颜色映射
-norm = plt.Normalize(vmin=min(edge_colors), vmax=max(edge_colors))
-edge_colors = [cmap(norm(d['attention'])) for u, v, d in nx_g.edges(data=True)]
+adj_perturbed = sp.load_npz(f'./{exp}/GAT_checkpoints/{args.dataset}{tim1}/adj_delta.npz')
+feats_perturbed = torch.load(f'./{exp}/GAT_checkpoints/{args.dataset}{tim1}/feats_delta.pth').to(args.device)
 
-nx.draw(nx_g, pos, node_color='lightblue', node_size=feats.shape[0], edge_color=edge_colors, width=2.0, edge_cmap=cmap)
+vanilla.eval()
+new_outputs, _, new_att = vanilla(torch.cat((feats, feats_perturbed), dim=0), adj_perturbed)
+new_outputs, new_att = new_outputs[:FGAI_outputs.shape[0]], new_att[:FGAI_att.shape[0]]
+pred = torch.argmax(new_outputs[test_idx], dim=1)
+accuracy = accuracy_score(label[test_idx].cpu(), pred.cpu())
+print(f"Vanilla accuracy after attack: {accuracy:.4f}")
+
+FGAI.eval()
+new_FGAI_outputs, _, new_FGAI_att = FGAI(torch.cat((feats, feats_perturbed), dim=0), adj_perturbed)
+new_FGAI_outputs, new_FGAI_att = new_FGAI_outputs[:FGAI_outputs.shape[0]], new_FGAI_att[:FGAI_att.shape[0]]
+FGAI_pred = torch.argmax(new_FGAI_outputs[test_idx], dim=1)
+accuracy = accuracy_score(label[test_idx].cpu(), FGAI_pred.cpu())
+print(f"FGAI accuracy after attack: {accuracy:.4f}")
+
+src, dst = g_dgl.edges()
+att_list, att_list_new = [], []
+att_list_FGAI, att_list_new_FGAI = [], []
+neighbor_list = []
+indices_list = []
+for node_id in g_dgl.nodes():
+    neighbors = g_dgl.successors(node_id)
+    if node_id > 4:
+        break
+    print(node_id)
+    neighbor_list.append(neighbors.numpy())
+    indices = np.where(src == node_id)[0]
+    indices_list.append(indices)
+    att_list.append(orig_att[indices])
+    att_list_new.append(new_att[indices].detach())
+    att_list_FGAI.append(FGAI_att[indices])
+    att_list_new_FGAI.append(new_FGAI_att[indices].detach())
+
+neighbor_ids = np.concatenate(neighbor_list)
+att_color = np.concatenate(att_list)
+att_color_new = np.concatenate(att_list_new)
+att_color_FGAI = np.concatenate(att_list_FGAI)
+att_color_new_FGAI = np.concatenate(att_list_new_FGAI)
+select_nodes = np.unique(neighbor_ids)
+select_edges = np.concatenate(indices_list)
+
+# 创建图形和子图
+fig = plt.figure(figsize=(12, 6))
+gs = gridspec.GridSpec(1, 3, width_ratios=[1, 1, 0.05])
+# edge_cmap = plt.get_cmap("coolwarm")
+# edge_cmap = edge_cmap.reversed()
+# edge_cmap = plt.cm.Blues
+edge_cmap = plt.cm.Reds
+# edge_cmap = plt.cm.Greens
+
+sub_g = dgl.edge_subgraph(g_dgl, select_edges)
+sub_g = dgl.to_networkx(sub_g)
+pos = nx.random_layout(sub_g)
+
+ax1 = plt.subplot(gs[0])
+colors = np.power(att_color, 1 / 2)
+edges = nx.draw_networkx_edges(sub_g, pos=pos, edge_color=colors,
+                               width=1.5, edge_cmap=edge_cmap, edge_vmin=0, alpha=0.9, ax=ax1)
+nx.draw_networkx_nodes(sub_g, pos, nodelist=sub_g.nodes(), node_color='#5e86c1', alpha=0.95, node_size=125, ax=ax1)
+# nx.draw_networkx_labels(g, pos, labels=node_labels, font_color='blue')
+ax1.set_title("Original")
+
+ax2 = plt.subplot(gs[1])
+colors = np.power(att_color_new, 1 / 2)
+edges = nx.draw_networkx_edges(sub_g, pos=pos, edge_color=colors,
+                               width=1.5, edge_cmap=edge_cmap, edge_vmin=0, alpha=0.9, ax=ax2)
+nx.draw_networkx_nodes(sub_g, pos, nodelist=sub_g.nodes(), node_color='#5e86c1', alpha=0.95, node_size=125, ax=ax2)
+ax2.set_title("Perturbed")
+
+cax = plt.subplot(gs[2])
+pc = mpl.collections.PatchCollection([], cmap=edge_cmap)
+pc.set_array(colors)
+plt.colorbar(pc, cax=cax)
+
+plt.tight_layout()
+plt.savefig(f"{exp}_{dataset}_vanilla.pdf", format="pdf")
 plt.show()
 
-# 显示颜色条
-sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
-sm.set_array([])
-plt.colorbar(sm, label='Attention Value')
+fig = plt.figure(figsize=(12, 6))
+gs = gridspec.GridSpec(1, 3, width_ratios=[1, 1, 0.05])
 
+ax1 = plt.subplot(gs[0])
+colors = np.power(att_color_FGAI, 1 / 2)
+edges = nx.draw_networkx_edges(sub_g, pos=pos, edge_color=colors,
+                               width=1.5, edge_cmap=edge_cmap, edge_vmin=0, alpha=0.9, ax=ax1)
+nx.draw_networkx_nodes(sub_g, pos, nodelist=sub_g.nodes(), node_color='#5e86c1', alpha=0.95, node_size=125, ax=ax1)
+# nx.draw_networkx_labels(g, pos, labels=node_labels, font_color='blue')
+ax1.set_title("Original")
+
+ax2 = plt.subplot(gs[1])
+colors = np.power(att_color_new_FGAI, 1 / 2)
+edges = nx.draw_networkx_edges(sub_g, pos=pos, edge_color=colors,
+                               width=1.5, edge_cmap=edge_cmap, edge_vmin=0, alpha=0.9, ax=ax2)
+nx.draw_networkx_nodes(sub_g, pos, nodelist=sub_g.nodes(), node_color='#5e86c1', alpha=0.95, node_size=125, ax=ax2)
+ax2.set_title("Perturbed")
+
+cax = plt.subplot(gs[2])
+pc = mpl.collections.PatchCollection([], cmap=edge_cmap)
+pc.set_array(colors)
+plt.colorbar(pc, cax=cax)
+
+plt.tight_layout()
+plt.savefig(f"{exp}_{dataset}_FGAI.pdf", format="pdf")
 plt.show()
