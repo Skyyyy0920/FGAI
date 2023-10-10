@@ -11,7 +11,8 @@ import matplotlib.gridspec as gridspec
 
 
 def ranking_value(orig_att):
-    K = int(len(orig_att) * 0.4)
+    # K = int(len(orig_att) * 0.4)
+    K = int(len(orig_att) * 1)
     sorted_indices = torch.argsort(orig_att, descending=True)
     ranks = torch.arange(1, len(orig_att) + 1, dtype=torch.float32)
     discrete_values = (len(orig_att) - ranks + 1) / len(orig_att)
@@ -84,37 +85,64 @@ FGAI_pred = torch.argmax(new_FGAI_outputs[test_idx], dim=1)
 accuracy = accuracy_score(label[test_idx].cpu(), FGAI_pred.cpu())
 print(f"FGAI accuracy after attack: {accuracy:.4f}")
 
-topk_values_orig, topk_indices_orig = torch.topk(orig_att, k=100, largest=True)
-topk_values_new, topk_indices_new = torch.topk(new_att, k=100, largest=True)
-topk_values_FGAI, topk_indices_FGAI = torch.topk(FGAI_att, k=100, largest=True)
-topk_values_FGAI_new, topk_indices_FGAI_new = torch.topk(new_FGAI_att, k=100, largest=True)
+kkk = 200
+topk_values_orig, topk_indices_orig = torch.topk(orig_att, k=kkk, largest=True)
+topk_values_new, topk_indices_new = torch.topk(new_att, k=kkk, largest=True)
+topk_values_FGAI, topk_indices_FGAI = torch.topk(FGAI_att, k=kkk, largest=True)
+topk_values_FGAI_new, topk_indices_FGAI_new = torch.topk(new_FGAI_att, k=kkk, largest=True)
 
 src, dst = g_dgl.edges()
 att_list, att_list_new = [], []
 att_list_FGAI, att_list_new_FGAI = [], []
-neighbor_list_orig = []
-indices_list = []
+neighbor_list_orig, nei_l_new, nei_l_F, nei_l_F_new = [], [], [], []
+indices_list_orig, ind_l_new, ind_l_F, ind_l_F_new = [], [], [], []
 
 neighbor_list_orig.append(src[topk_indices_orig])
 neighbor_list_orig.append(dst[topk_indices_orig])
+nei_l_new.append(src[topk_indices_new])
+nei_l_new.append(dst[topk_indices_new])
+nei_l_F.append(src[topk_indices_FGAI])
+nei_l_F.append(dst[topk_indices_FGAI])
+nei_l_F_new.append(src[topk_indices_FGAI_new])
+nei_l_F_new.append(dst[topk_indices_FGAI_new])
 
-node_id = 6666
-neighbors = g_dgl.successors(node_id)
-neighbor_list_orig.append(neighbors.numpy())
-indices = np.where(src == node_id)[0]
-indices_list.append(indices)
-att_list.append(ranking_value(orig_att[indices]))
-att_list_new.append(ranking_value(new_att[indices].detach()))
-att_list_FGAI.append(ranking_value(FGAI_att[indices]))
-att_list_new_FGAI.append(ranking_value(new_FGAI_att[indices].detach()))
+indices_list_orig.append(topk_indices_orig)
+ind_l_new.append(topk_indices_new)
+ind_l_F.append(topk_indices_FGAI)
+ind_l_F_new.append(topk_indices_FGAI_new)
 
 neighbor_ids_orig = np.concatenate(neighbor_list_orig)
+nei_ids_new = np.concatenate(nei_l_new)
+nei_ids_F = np.concatenate(nei_l_F)
+nei_ids_F_new = np.concatenate(nei_l_F_new)
+
+select_nodes_orig = np.unique(neighbor_ids_orig)
+select_edges_orig = np.concatenate(indices_list_orig)
+select_nodes_new = np.unique(nei_ids_new)
+select_edges_new = np.concatenate(ind_l_new)
+select_nodes_F = np.unique(nei_ids_F)
+select_edges_F = np.concatenate(ind_l_F)
+select_nodes_F_new = np.unique(nei_ids_F_new)
+select_edges_F_new = np.concatenate(ind_l_F_new)
+
+att_list.append(np.ones(len(topk_indices_orig)))
+result = np.zeros(len(topk_indices_orig))
+for i in range(len(topk_indices_new)):
+    if topk_indices_new[i] in topk_indices_orig:
+        result[i] = 1
+att_list_new.append(result)
+
+att_list_FGAI.append(np.ones(len(topk_indices_FGAI)))
+result = np.zeros(len(topk_indices_orig))
+for i in range(len(topk_indices_FGAI_new)):
+    if topk_indices_FGAI_new[i] in topk_indices_FGAI:
+        result[i] = 1
+att_list_new_FGAI.append(result)
+
 att_color = np.concatenate(att_list)
 att_color_new = np.concatenate(att_list_new)
 att_color_FGAI = np.concatenate(att_list_FGAI)
 att_color_new_FGAI = np.concatenate(att_list_new_FGAI)
-select_nodes = np.unique(neighbor_ids_orig)
-select_edges = np.concatenate(indices_list)
 
 fig = plt.figure(figsize=(12, 6))
 gs = gridspec.GridSpec(1, 2, width_ratios=[1, 1])
@@ -125,7 +153,7 @@ edge_cmap = plt.cm.Reds
 # edge_cmap = plt.cm.Greens
 power_rate = 1
 
-sub_g = dgl.edge_subgraph(g_dgl, select_edges)
+sub_g = dgl.edge_subgraph(g_dgl, select_edges_orig)
 sub_g = dgl.to_networkx(sub_g)
 pos = nx.random_layout(sub_g)
 
@@ -135,6 +163,9 @@ edges = nx.draw_networkx_edges(sub_g, pos=pos, edge_color=colors,
                                width=1.5, edge_cmap=edge_cmap, edge_vmin=0, alpha=0.9, ax=ax1)
 nx.draw_networkx_nodes(sub_g, pos, nodelist=sub_g.nodes(), node_color='#5e86c1', alpha=0.95, node_size=125, ax=ax1)
 ax1.set_title("Original")
+
+# sub_g = dgl.edge_subgraph(g_dgl, select_edges_new)
+# sub_g = dgl.to_networkx(sub_g)
 
 ax2 = plt.subplot(gs[1])
 colors = att_color_new
@@ -150,12 +181,19 @@ plt.show()
 fig = plt.figure(figsize=(12, 6))
 gs = gridspec.GridSpec(1, 2, width_ratios=[1, 1])
 
+sub_g = dgl.edge_subgraph(g_dgl, select_edges_F)
+sub_g = dgl.to_networkx(sub_g)
+pos = nx.random_layout(sub_g)
+
 ax1 = plt.subplot(gs[0])
 colors = att_color_FGAI
 edges = nx.draw_networkx_edges(sub_g, pos=pos, edge_color=colors,
                                width=1.5, edge_cmap=edge_cmap, edge_vmin=0, alpha=0.9, ax=ax1)
 nx.draw_networkx_nodes(sub_g, pos, nodelist=sub_g.nodes(), node_color='#5e86c1', alpha=0.95, node_size=125, ax=ax1)
 ax1.set_title("Original")
+
+# sub_g = dgl.edge_subgraph(g_dgl, select_edges_F_new)
+# sub_g = dgl.to_networkx(sub_g)
 
 ax2 = plt.subplot(gs[1])
 colors = att_color_new_FGAI
