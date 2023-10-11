@@ -13,7 +13,7 @@ from attackers import PGD
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 if __name__ == '__main__':
-    dataset ='ogbn-arxiv'
+    dataset = 'ogbn-arxiv'
     # dataset='ogbn-products'
     # dataset='ogbn-papers100M'
     # dataset = 'pubmed'

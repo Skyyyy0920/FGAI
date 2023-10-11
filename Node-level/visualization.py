@@ -142,7 +142,7 @@ gs = gridspec.GridSpec(1, 3, width_ratios=[1, 1, 0.05])
 # edge_cmap = plt.cm.Blues
 edge_cmap = plt.cm.Reds
 # edge_cmap = plt.cm.Greens
-power_rate = 1/3
+power_rate = 1 / 3
 
 sub_g = dgl.edge_subgraph(g_dgl, select_edges)
 sub_g = dgl.to_networkx(sub_g)
