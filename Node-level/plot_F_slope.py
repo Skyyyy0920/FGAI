@@ -14,7 +14,7 @@ dataset = 'amazon-cs'
 
 figure = plt.figure(figsize=(20, 10))  # 调整总体图的大小
 sns.set(style='whitegrid', color_codes=True)
-plt.gcf().subplots_adjust(left=0.05, right=0.98, bottom=0.05, top=0.98, wspace=0.15)  # 调整子图位置和间距
+plt.gcf().subplots_adjust(left=0.05, right=0.98, bottom=0.15, top=0.98, wspace=0.15)  # 调整子图位置和间距
 
 file_names = ["GAT.txt", "GATv2.txt", "GAT_FGAI.txt", "GATv2_FGAI.txt"]
 labels = ["GAT", "GATv2", "GAT_FGAI", "GATv2_FGAI"]
@@ -43,7 +43,7 @@ plt.xlabel('(a) negative perturbation', fontdict={'family': 'Times New Roman', '
 ax2.set_ylabel('')
 plt.yticks(fontproperties='Times New Roman', size=30)
 plt.xticks(fontproperties='Times New Roman', size=30)
-plt.legend(ncol=2, loc="lower left", columnspacing=0.5, prop={'family': 'Times New Roman', 'size': 16})
+plt.legend(ncol=2, loc="lower left", columnspacing=1.5, prop={'family': 'Times New Roman', 'size': 16})
 
 plt.subplot(122)
 wide_df = pd.DataFrame(neg_list, x, y)
@@ -53,14 +53,14 @@ plt.xlabel('(b) positive perturbation', fontdict={'family': 'Times New Roman', '
 ax2.set_ylabel('')
 plt.yticks(fontproperties='Times New Roman', size=30)
 plt.xticks(fontproperties='Times New Roman', size=30)
-plt.legend(ncol=2, loc="lower left", columnspacing=0.5, prop={'family': 'Times New Roman', 'size': 16})
+plt.legend(ncol=2, loc="lower left", columnspacing=1.5, prop={'family': 'Times New Roman', 'size': 16})
 
 figure.savefig(f'./line_chart_{dataset}_1.pdf')
 # plt.show()
 
 figure = plt.figure(figsize=(20, 10))  # 调整总体图的大小
 sns.set(style='whitegrid', color_codes=True)
-plt.gcf().subplots_adjust(left=0.05, right=0.98, bottom=0.05, top=0.98, wspace=0.15)  # 调整子图位置和间距
+plt.gcf().subplots_adjust(left=0.05, right=0.98, bottom=0.15, top=0.98, wspace=0.15)  # 调整子图位置和间距
 
 file_names = ["GAT+AT.txt", "GAT+LN.txt", "GAT+AT_FGAI.txt", "GAT+LN_FGAI.txt"]
 labels = ["GAT+AT", "GAT+LN", "GAT+AT_FGAI", "GAT+LN_FGAI"]
@@ -89,7 +89,7 @@ plt.xlabel('(a) negative perturbation', fontdict={'family': 'Times New Roman', '
 ax2.set_ylabel('')
 plt.yticks(fontproperties='Times New Roman', size=30)
 plt.xticks(fontproperties='Times New Roman', size=30)
-plt.legend(ncol=2, loc="lower left", columnspacing=0.5, prop={'family': 'Times New Roman', 'size': 16})
+plt.legend(ncol=2, loc="lower left", columnspacing=1.5, prop={'family': 'Times New Roman', 'size': 16})
 
 plt.subplot(122)
 wide_df = pd.DataFrame(neg_list, x, y)
@@ -99,7 +99,7 @@ plt.xlabel('(b) positive perturbation', fontdict={'family': 'Times New Roman', '
 ax2.set_ylabel('')
 plt.yticks(fontproperties='Times New Roman', size=30)
 plt.xticks(fontproperties='Times New Roman', size=30)
-plt.legend(ncol=2, loc="lower left", columnspacing=0.5, prop={'family': 'Times New Roman', 'size': 16})
+plt.legend(ncol=2, loc="lower left", columnspacing=1.5, prop={'family': 'Times New Roman', 'size': 16})
 
 figure.savefig(f'./line_chart_{dataset}_2.pdf')
 # plt.show()

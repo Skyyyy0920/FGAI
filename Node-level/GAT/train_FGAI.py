@@ -17,14 +17,14 @@ if __name__ == '__main__':
     # dataset ='ogbn-arxiv'
     # dataset='ogbn-products'
     # dataset='ogbn-papers100M'
-    # dataset = 'pubmed'
+    dataset = 'pubmed'
     # dataset='questions'
     # dataset='amazon-ratings'
     # dataset='roman-empire'
     # dataset = 'amazon_photo'
     # dataset = 'amazon_cs'
     # dataset='coauthor_cs'
-    dataset = 'coauthor_phy'
+    # dataset = 'coauthor_phy'
 
     # ==================================================================================================
     # 1. Get experiment args and seed
@@ -124,7 +124,7 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 6. Load pre-trained vanilla model
     # ==================================================================================================
-    tim = '_14-08'
+    tim = '_10-38'
     vanilla_model.load_state_dict(torch.load(f'./GAT_checkpoints/{dataset}{tim}/model_parameters.pth'))
 
     orig_outputs, orig_graph_repr, orig_att = \

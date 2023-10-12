@@ -97,22 +97,25 @@ class FGAITrainer(object):
             # 1. Closeness of Prediction
             closeness_of_prediction_loss = TVD(FGAI_outputs, orig_outputs)
 
-            # 2. Constraint of Stability. Perturb δ(x) to ensure robustness of FGAI
             target_mask = torch.ones(features.shape[0]).bool()
+            # 2. Constraint of Stability. Perturb δ(x) to ensure robustness of FGAI
             adj_delta, feats_delta = self.attacker_delta.attack(self.model, adj, features, target_mask, None)
             new_outputs, new_graph_repr, new_att = self.model(torch.cat((features, feats_delta), dim=0), adj_delta)
             adversarial_loss = TVD(new_outputs[:FGAI_outputs.shape[0]], orig_outputs)
+            # adversarial_loss = 0
 
             # 3. Stability of Explanation. Perturb 𝝆(x) to ensure robustness of explanation of FGAI
             adj_rho, feats_rho = self.attacker_rho.attack(self.model, adj, features, target_mask, None)
             new_outputs_2, new_graph_repr_2, new_att_2 = self.model(torch.cat((features, feats_rho), dim=0), adj_rho)
             stability_of_explanation_loss = topK_overlap_loss(new_att_2[:FGAI_att.shape[0]], FGAI_att, adj, self.K,
                                                               'l1')
+            # stability_of_explanation_loss = 0
 
             # 4. Similarity of Explanation
             # similarity_of_explanation_loss += topK_overlap_loss(FGAI_att, orig_att, adj, self.K, 'l1')
             similarity_of_explanation_loss = topK_overlap_loss(FGAI_att, orig_att[:FGAI_att.shape[0]], adj, self.K,
                                                                'l1')
+            # similarity_of_explanation_loss = 0
 
             loss = closeness_of_prediction_loss + adversarial_loss * self.lambda_1 + \
                    stability_of_explanation_loss * self.lambda_2 + similarity_of_explanation_loss * self.lambda_3
