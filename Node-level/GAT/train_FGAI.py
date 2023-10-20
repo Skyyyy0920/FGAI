@@ -124,7 +124,7 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 6. Load pre-trained vanilla model
     # ==================================================================================================
-    tim = '_10-38'
+    tim = '_12-27'
     vanilla_model.load_state_dict(torch.load(f'./GAT_checkpoints/{dataset}{tim}/model_parameters.pth'))
 
     orig_outputs, orig_graph_repr, orig_att = \
@@ -158,7 +158,7 @@ if __name__ == '__main__':
     accuracy = accuracy_score(label[test_idx].cpu(), pred.cpu())
     logging.info(f"Accuracy after attack: {accuracy:.4f}")
 
-    TVD_score = TVD(FGAI_att, new_att) / len(new_att)
+    TVD_score = TVD(orig_outputs, new_outputs) / len(orig_outputs)
     JSD_score = JSD(FGAI_att, new_att) / len(new_att)
     logging.info(f"JSD: {JSD_score}")
     logging.info(f"TVD: {TVD_score}")

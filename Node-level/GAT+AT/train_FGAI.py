@@ -159,7 +159,7 @@ if __name__ == '__main__':
     accuracy = accuracy_score(label[test_idx].cpu(), pred.cpu())
     logging.info(f"Accuracy after attack: {accuracy:.4f}")
 
-    TVD_score = TVD(FGAI_att, new_att) / len(new_att)
+    TVD_score = TVD(orig_outputs, new_outputs) / len(orig_outputs)
     JSD_score = JSD(FGAI_att, new_att) / len(new_att)
     logging.info(f"JSD: {JSD_score}")
     logging.info(f"TVD: {TVD_score}")

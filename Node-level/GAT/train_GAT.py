@@ -13,14 +13,14 @@ from attackers import PGD
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 if __name__ == '__main__':
-    dataset = 'ogbn-arxiv'
+    # dataset = 'ogbn-arxiv'
     # dataset='ogbn-products'
     # dataset='ogbn-papers100M'
     # dataset = 'pubmed'
     # dataset='questions'
     # dataset='amazon-ratings'
     # dataset='roman-empire'
-    # dataset = 'amazon_photo'
+    dataset = 'amazon_photo'
     # dataset = 'amazon_cs'
     # dataset='coauthor_cs'
     # dataset = 'coauthor_phy'
@@ -96,7 +96,7 @@ if __name__ == '__main__':
     accuracy = accuracy_score(label[test_idx].cpu(), pred.cpu())
     logging.info(f"Accuracy after attack: {accuracy:.4f}")
 
-    TVD_score = TVD(orig_att, new_att) / len(orig_att)
+    TVD_score = TVD(orig_outputs, new_outputs) / len(orig_outputs)
     JSD_score = JSD(orig_att, new_att) / len(orig_att)
     logging.info(f"JSD: {JSD_score}")
     logging.info(f"TVD: {TVD_score}")
