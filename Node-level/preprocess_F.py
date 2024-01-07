@@ -80,16 +80,16 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 5. Build models, define overall loss and optimizer
     # ==================================================================================================
-    vanilla_model = GATNodeClassifier(in_feats=in_feats,
-                                      hid_dim=args.hid_dim,
-                                      n_classes=num_classes,
+    vanilla_model = GATNodeClassifier(feats_size=in_feats,
+                                      hidden_size=args.hid_dim,
+                                      out_size=num_classes,
                                       n_layers=args.n_layers,
                                       n_heads=args.n_heads,
                                       feat_drop=args.feat_drop,
                                       attn_drop=args.attn_drop).to(device)
-    FGAI = GATNodeClassifier(in_feats=in_feats,
-                             hid_dim=args.hid_dim,
-                             n_classes=num_classes,
+    FGAI = GATNodeClassifier(feats_size=in_feats,
+                             hidden_size=args.hid_dim,
+                             out_size=num_classes,
                              n_layers=args.n_layers,
                              n_heads=args.n_heads,
                              feat_drop=args.feat_drop,

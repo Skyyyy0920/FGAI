@@ -67,8 +67,8 @@ if __name__ == '__main__':
 
     criterion = nn.CrossEntropyLoss()
     if args.dataset == 'ogbg-ppa':
-        standard_model = GATGraphClassifier(in_feats=in_feats,
-                                            hid_dim=128,
+        standard_model = GATGraphClassifier(feats_size=in_feats,
+                                            hidden_size=128,
                                             n_classes=num_classes,
                                             n_layers=3,
                                             n_heads=[4, 2, 1],
@@ -79,8 +79,8 @@ if __name__ == '__main__':
                                lr=1e-4,
                                weight_decay=0)
     else:
-        standard_model = GATGraphClassifier(in_feats=in_feats,
-                                            hid_dim=64,
+        standard_model = GATGraphClassifier(feats_size=in_feats,
+                                            hidden_size=64,
                                             n_classes=num_classes,
                                             n_layers=3,
                                             n_heads=[4, 2, 1],

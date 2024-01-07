@@ -1,7 +1,8 @@
-import time
 import dgl
+import time
 import numpy as np
 import scipy.sparse as sp
+from tqdm import tqdm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -12,6 +13,8 @@ from dgl.base import DGLError
 from dgl.ops import edge_softmax
 from dgl.utils import expand_as_pair
 from dgl.nn.pytorch.utils import Identity
+import dgl.sparse as dglsp
+from ogb.graphproppred.mol_encoder import AtomEncoder
 from utils import k_shell_algorithm, feature_normalize
 import torch.optim as optim
 from deeprobust.graph.utils import accuracy
@@ -151,14 +154,18 @@ class GATConv(nn.Module):
 
 
 class GATNodeClassifier(nn.Module):
-    def __init__(self, in_feats, hid_dim, n_classes, n_layers, n_heads, feat_drop, attn_drop, LayerNorm=False):
+    def __init__(self, feats_size, hidden_size, out_size, n_layers, n_heads, feat_drop, attn_drop, LayerNorm=False):
         super(GATNodeClassifier, self).__init__()
         self.layers = nn.ModuleList()
-        self.layers.append(GATConv(in_feats, hid_dim, n_heads[0], feat_drop, attn_drop, activation=F.elu))
+        self.layers.append(
+            GATConv(feats_size, hidden_size, n_heads[0], feat_drop, attn_drop, activation=F.elu)
+        )
         for i in range(0, n_layers - 1):
-            in_hid_dim = hid_dim * n_heads[i]
-            self.layers.append(GATConv(in_hid_dim, hid_dim, n_heads[i + 1], feat_drop, attn_drop, activation=F.elu))
-        self.out_layer = GATConv(hid_dim * n_heads[-1], n_classes, 1, feat_drop, attn_drop, activation=F.elu)
+            in_hid_dim = hidden_size * n_heads[i]
+            self.layers.append(
+                GATConv(in_hid_dim, hidden_size, n_heads[i + 1], feat_drop, attn_drop, activation=F.elu)
+            )
+        self.out_layer = GATConv(hidden_size * n_heads[-1], out_size, 1, feat_drop, attn_drop, activation=F.elu)
         self.dropout = nn.Dropout(0.6)
         self.LayerNorm = LayerNorm
 
@@ -181,16 +188,20 @@ class GATNodeClassifier(nn.Module):
 
 
 class GATv2NodeClassifier(nn.Module):
-    def __init__(self, in_feats, hid_dim, n_classes, n_layers, n_heads, feat_drop, attn_drop):
+    def __init__(self, feats_size, hidden_size, out_size, n_layers, n_heads, feat_drop, attn_drop):
         super(GATv2NodeClassifier, self).__init__()
         self.layers = nn.ModuleList()
         self.layers.append(
-            GATv2Conv(in_feats, hid_dim, n_heads[0], feat_drop, attn_drop, activation=F.elu, allow_zero_in_degree=True))
+            GATv2Conv(feats_size, hidden_size, n_heads[0], feat_drop, attn_drop, activation=F.elu,
+                      allow_zero_in_degree=True)
+        )
         for i in range(0, n_layers - 1):
-            in_hid_dim = hid_dim * n_heads[i]
-            self.layers.append(GATv2Conv(in_hid_dim, hid_dim, n_heads[i + 1], feat_drop, attn_drop, activation=F.elu,
-                                         allow_zero_in_degree=True))
-        self.out_layer = GATv2Conv(hid_dim * n_heads[-1], n_classes, 1, feat_drop, attn_drop, activation=F.elu,
+            in_hid_dim = hidden_size * n_heads[i]
+            self.layers.append(
+                GATv2Conv(in_hid_dim, hidden_size, n_heads[i + 1], feat_drop, attn_drop, activation=F.elu,
+                          allow_zero_in_degree=True)
+            )
+        self.out_layer = GATv2Conv(hidden_size * n_heads[-1], out_size, 1, feat_drop, attn_drop, activation=F.elu,
                                    allow_zero_in_degree=True)
         self.dropout = nn.Dropout(0.6)
 
@@ -211,16 +222,19 @@ class GATv2NodeClassifier(nn.Module):
 
 
 class GATGraphClassifier(nn.Module):
-    def __init__(self, in_feats, hid_dim, n_classes, n_layers, n_heads, feat_drop, attn_drop, readout_type='K-shell'):
+    def __init__(self, feats_size, hidden_size, n_classes, n_layers, n_heads, feat_drop, attn_drop, readout_type=''):
         super(GATGraphClassifier, self).__init__()
         self.readout_type = readout_type
-
         self.layers = nn.ModuleList()
-        self.layers.append(GATConv(in_feats, hid_dim, n_heads[0], feat_drop, attn_drop, activation=F.elu))
+        self.layers.append(
+            GATConv(feats_size, hidden_size, n_heads[0], feat_drop, attn_drop, activation=F.elu)
+        )
         for i in range(0, n_layers - 1):
-            in_hid_dim = hid_dim * n_heads[i]
-            self.layers.append(GATConv(in_hid_dim, hid_dim, n_heads[i + 1], feat_drop, attn_drop, activation=F.elu))
-        self.out_layer = nn.Linear(hid_dim * n_heads[-1], n_classes)
+            in_hid_dim = hidden_size * n_heads[i]
+            self.layers.append(
+                GATConv(in_hid_dim, hidden_size, n_heads[i + 1], feat_drop, attn_drop, activation=F.elu)
+            )
+        self.out_layer = nn.Linear(hidden_size * n_heads[-1], n_classes)
 
     def forward(self, x, g):
         for layer in self.layers:
@@ -488,3 +502,82 @@ class EstimateAdj(nn.Module):
         mx = r_mat_inv @ mx
         mx = mx @ r_mat_inv
         return mx
+
+
+class SparseMHA(nn.Module):  # Sparse Multi-head Attention Module
+    def __init__(self, hidden_size=80, n_heads=8):
+        super(SparseMHA, self).__init__()
+        self.hidden_size = hidden_size
+        self.num_heads = n_heads
+        self.head_dim = hidden_size // n_heads
+        self.scaling = self.head_dim ** -0.5
+
+        self.q_proj = nn.Linear(hidden_size, hidden_size)
+        self.k_proj = nn.Linear(hidden_size, hidden_size)
+        self.v_proj = nn.Linear(hidden_size, hidden_size)
+        self.out_proj = nn.Linear(hidden_size, hidden_size)
+
+    def forward(self, A, h):
+        N = len(h)
+        # [N, dh, nh]
+        q = self.q_proj(h).reshape(N, self.head_dim, self.num_heads)
+        q *= self.scaling
+        # [N, dh, nh]
+        k = self.k_proj(h).reshape(N, self.head_dim, self.num_heads)
+        # [N, dh, nh]
+        v = self.v_proj(h).reshape(N, self.head_dim, self.num_heads)
+
+        # (HIGHLIGHT) Compute the multi-head attention with Sparse Matrix API
+        attn = dglsp.bsddmm(A, q, k.transpose(1, 0))  # (sparse) [N, N, nh]
+        # Sparse softmax by default applies on the last sparse dimension.
+        attn = attn.softmax()  # (sparse) [N, N, nh]
+        out = dglsp.bspmm(attn, v)  # [N, dh, nh]
+
+        return self.out_proj(out.reshape(N, -1)), attn
+
+
+class GTLayer(nn.Module):
+    def __init__(self, hidden_size=80, n_heads=8):
+        super(GTLayer, self).__init__()
+        self.MHA = SparseMHA(hidden_size=hidden_size, n_heads=n_heads)
+        self.batchnorm1 = nn.BatchNorm1d(hidden_size)
+        self.batchnorm2 = nn.BatchNorm1d(hidden_size)
+        self.FFN1 = nn.Linear(hidden_size, hidden_size * 2)
+        self.FFN2 = nn.Linear(hidden_size * 2, hidden_size)
+
+    def forward(self, h, adj):
+        h1 = h
+        h, att = self.MHA(adj, h)
+        h = self.batchnorm1(h + h1)
+
+        h2 = h
+        h = self.FFN2(F.relu(self.FFN1(h)))
+        h = h2 + h
+
+        return self.batchnorm2(h), att
+
+
+class GTNodeClassifier(nn.Module):
+    def __init__(self, out_size, hidden_size=80, pos_enc_size=2, n_layers=8, n_heads=8):
+        super(GTNodeClassifier, self).__init__()
+        self.atom_encoder = AtomEncoder(hidden_size)
+        self.pos_linear = nn.Linear(pos_enc_size, hidden_size)
+        self.layers = nn.ModuleList(
+            [GTLayer(hidden_size, n_heads) for _ in range(n_layers)]
+        )
+        self.predictor = nn.Sequential(
+            nn.Linear(hidden_size, hidden_size // 2),
+            nn.ReLU(),
+            nn.Linear(hidden_size // 2, hidden_size // 4),
+            nn.ReLU(),
+            nn.Linear(hidden_size // 4, out_size),
+        )
+
+    def forward(self, X, adj, pos_enc):
+        h = self.atom_encoder(X) + self.pos_linear(pos_enc)
+        for layer in self.layers:
+            h, att = layer(h, adj)
+        graph_representation = h.mean(dim=0)
+        logits = self.predictor(h)
+
+        return logits, graph_representation, att

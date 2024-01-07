@@ -7,8 +7,8 @@ import matplotlib.pyplot as plt
 # dataset = 'pubmed'
 # dataset = 'amazon-photo'
 # dataset = 'amazon-cs'
-dataset = 'coauthor-phy'
-# dataset = 'ogbn-arxiv'
+# dataset = 'coauthor-phy'
+dataset = 'ogbn-arxiv'
 print(dataset)
 
 figure = plt.figure(figsize=(20, 10))  # 调整总体图的大小
@@ -20,8 +20,8 @@ labels = ["GAT", "GATv2", "GAT_FGAI", "GATv2_FGAI"]
 
 data = []
 for file_name in file_names:
-    # file_path = os.path.join(f"./for_F/{dataset}", file_name)
-    file_path = os.path.join(f"./F/{dataset}", file_name)
+    file_path = os.path.join(f"./for_F/{dataset}", file_name)
+    # file_path = os.path.join(f"./F/{dataset}", file_name)
     df = pd.read_csv(file_path)
     data.append(df)
 
@@ -55,8 +55,8 @@ plt.yticks(fontproperties='Times New Roman', size=30)
 plt.xticks(fontproperties='Times New Roman', size=30)
 plt.legend(ncol=2, loc="lower left", columnspacing=1.5, prop={'family': 'Times New Roman', 'size': 16})
 
-# figure.savefig(f'./line_chart_{dataset}_1.pdf')
-figure.savefig(f'./line_chart_{dataset}_1_attacked.pdf')
+figure.savefig(f'./line_chart_{dataset}_1.pdf')
+# figure.savefig(f'./line_chart_{dataset}_1_attacked.pdf')
 # plt.show()
 
 figure = plt.figure(figsize=(20, 10))  # 调整总体图的大小
@@ -68,8 +68,8 @@ labels = ["GAT+AT", "GAT+LN", "GAT+AT_FGAI", "GAT+LN_FGAI"]
 
 data = []
 for file_name in file_names:
-    # file_path = os.path.join(f"./for_F/{dataset}", file_name)
-    file_path = os.path.join(f"./F/{dataset}", file_name)
+    file_path = os.path.join(f"./for_F/{dataset}", file_name)
+    # file_path = os.path.join(f"./F/{dataset}", file_name)
     df = pd.read_csv(file_path)
     data.append(df)
 
@@ -103,6 +103,6 @@ plt.yticks(fontproperties='Times New Roman', size=30)
 plt.xticks(fontproperties='Times New Roman', size=30)
 plt.legend(ncol=2, loc="lower left", columnspacing=1.5, prop={'family': 'Times New Roman', 'size': 16})
 
-# figure.savefig(f'./line_chart_{dataset}_2.pdf')
-figure.savefig(f'./line_chart_{dataset}_2_attacked.pdf')
+figure.savefig(f'./line_chart_{dataset}_2.pdf')
+# figure.savefig(f'./line_chart_{dataset}_2_attacked.pdf')
 # plt.show()

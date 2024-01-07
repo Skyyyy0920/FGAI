@@ -15,17 +15,11 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 device = 'cpu'
 
 if __name__ == '__main__':
-    # dataset ='ogbn-arxiv'
-    # dataset='ogbn-products'
-    # dataset='ogbn-papers100M'
-    # dataset='questions'
-    # dataset='amazon-ratings'
-    # dataset='roman-empire'
-    # dataset = 'pubmed'
-    # dataset = 'amazon_photo'
+    dataset = 'amazon_photo'
     # dataset = 'amazon_cs'
-    # dataset='coauthor_cs'
-    dataset = 'coauthor_phy'
+    # dataset = 'coauthor_phy'
+    # dataset = 'pubmed'
+    # dataset = 'ogbn-arxiv'
 
     # ==================================================================================================
     # 1. Get experiment args and seed
@@ -41,24 +35,11 @@ if __name__ == '__main__':
     # 2. Setup logger
     # ==================================================================================================
     print('\n' + '=' * 36 + ' Setup logger ' + '=' * 36)
-    for handler in logging.root.handlers[:]:
-        logging.root.removeHandler(handler)
     logging_time = time.strftime('%m-%d_%H-%M', time.localtime())
-    save_dir = os.path.join("./FGAI_checkpoints/", f"{dataset}_{logging_time}")
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
-    logging.basicConfig(level=logging.INFO,
-                        format='[%(asctime)s %(levelname)s]%(message)s',
-                        datefmt='%Y-%m-%d %H:%M:%S',
-                        filename=os.path.join(save_dir, f'{dataset}.log'))
-    console = logging.StreamHandler()  # Simultaneously output to console
-    console.setLevel(logging.INFO)
-    console.setFormatter(logging.Formatter(fmt='[%(asctime)s %(levelname)s]%(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
-    logging.getLogger('').addHandler(console)
-    logging.getLogger('matplotlib.font_manager').disabled = True
+    save_dir = os.path.join("FGAI_checkpoints", f"{dataset}_{logging_time}")
+    logging_config(save_dir)
 
     logging.info(f"Using device: {device}")
-    logging.info(f"PyTorch Version: {torch.__version__}")
     logging.info(f"args: {args}")
     logging.info(f"Saving path: {save_dir}")
 
@@ -81,16 +62,16 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 5. Build models, define overall loss and optimizer
     # ==================================================================================================
-    vanilla_model = GATNodeClassifier(in_feats=in_feats,
-                                      hid_dim=args.hid_dim,
-                                      n_classes=num_classes,
+    vanilla_model = GATNodeClassifier(feats_size=in_feats,
+                                      hidden_size=args.hid_dim,
+                                      out_size=num_classes,
                                       n_layers=args.n_layers,
                                       n_heads=args.n_heads,
                                       feat_drop=args.feat_drop,
                                       attn_drop=args.attn_drop).to(device)
-    FGAI = GATNodeClassifier(in_feats=in_feats,
-                             hid_dim=args.hid_dim,
-                             n_classes=num_classes,
+    FGAI = GATNodeClassifier(feats_size=in_feats,
+                             hidden_size=args.hid_dim,
+                             out_size=num_classes,
                              n_layers=args.n_layers,
                              n_heads=args.n_heads,
                              feat_drop=args.feat_drop,

@@ -136,11 +136,11 @@ if __name__ == '__main__':
     #                          feat_drop=args.feat_drop,
     #                          attn_drop=args.attn_drop).to(device)
     FGAI = GNNGuard(in_feats=in_feats,
-                             hid_dim=args.hid_dim,
-                             n_classes=num_classes,
-                             n_layers=args.n_layers,
-                             n_heads=args.n_heads,
-                             dropout=0.6).to(device)
+                    hid_dim=args.hid_dim,
+                    n_classes=num_classes,
+                    n_layers=args.n_layers,
+                    n_heads=args.n_heads,
+                    dropout=0.6).to(device)
     vanilla_model = GNNGuard(in_feats=in_feats,
                              hid_dim=args.hid_dim,
                              n_classes=num_classes,

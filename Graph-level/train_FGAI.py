@@ -102,16 +102,16 @@ if __name__ == '__main__':
     # 5. Build models, define overall loss and optimizer
     # ==================================================================================================
     if args.dataset == 'ogbg-ppa':
-        standard_model = GATGraphClassifier(in_feats=in_feats,
-                                            hid_dim=128,
+        standard_model = GATGraphClassifier(feats_size=in_feats,
+                                            hidden_size=128,
                                             n_classes=num_classes,
                                             n_layers=3,
                                             n_heads=[4, 2, 1],
                                             feat_drop=0.2,
                                             attn_drop=0.05,
                                             readout_type=args.readout_type).to(args.device)
-        FGAI = GATGraphClassifier(in_feats=in_feats,
-                                  hid_dim=128,
+        FGAI = GATGraphClassifier(feats_size=in_feats,
+                                  hidden_size=128,
                                   n_classes=num_classes,
                                   n_layers=3,
                                   n_heads=[4, 2, 1],
@@ -122,16 +122,16 @@ if __name__ == '__main__':
                                     lr=1e-2,
                                     weight_decay=0)
     else:
-        standard_model = GATGraphClassifier(in_feats=in_feats,
-                                            hid_dim=128,
+        standard_model = GATGraphClassifier(feats_size=in_feats,
+                                            hidden_size=128,
                                             n_classes=num_classes,
                                             n_layers=3,
                                             n_heads=[4, 2, 1],
                                             feat_drop=0.2,
                                             attn_drop=0.05,
                                             readout_type=args.readout_type).to(args.device)
-        FGAI = GATGraphClassifier(in_feats=in_feats,
-                                  hid_dim=128,
+        FGAI = GATGraphClassifier(feats_size=in_feats,
+                                  hidden_size=128,
                                   n_classes=num_classes,
                                   n_layers=3,
                                   n_heads=[4, 2, 1],

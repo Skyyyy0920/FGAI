@@ -5,7 +5,7 @@ import pandas as pd
 import torch.nn as nn
 import torch.optim as optim
 from utils import *
-from models import GATNodeClassifier
+from models import GTNodeClassifier
 from load_dataset import load_dataset
 from trainer import VanillaTrainer
 from attackers import PGD
@@ -31,36 +31,53 @@ if __name__ == '__main__':
     logging.info(f"Saving path: {save_dir}")
 
     adj, features, label, train_idx, valid_idx, test_idx, num_classes = load_dataset(args)
-    in_feats = features.shape[1]
+    pos_enc_size = 8
 
-    GAT = GATNodeClassifier(
-        feats_size=in_feats,
+    criterion = nn.CrossEntropyLoss()
+    GT = GTNodeClassifier(
         hidden_size=args.hid_dim,
         out_size=num_classes,
+        pos_enc_size=pos_enc_size,
         n_layers=args.n_layers,
-        n_heads=args.n_heads,
-        feat_drop=args.feat_drop,
-        attn_drop=args.attn_drop
+        n_heads=args.n_heads
     ).to(device)
     optimizer = optim.Adam(
-        GAT.parameters(),
+        GT.parameters(),
         lr=args.lr,
         weight_decay=args.weight_decay
     )
-    criterion = nn.CrossEntropyLoss()
 
-    total_params = sum(p.numel() for p in GAT.parameters())
+    total_params = sum(p.numel() for p in GT.parameters())
     logging.info(f"Total parameters: {total_params}")
-    logging.info(f"Model: {GAT}")
+    logging.info(f"Model: {GT}")
     logging.info(f"Optimizer: {optimizer}")
 
-    std_trainer = VanillaTrainer(GAT, criterion, optimizer, args)
-    std_trainer.train(features, adj, label, train_idx, valid_idx)
+    g.ndata["PE"] = dgl.laplacian_pe(g, k=pos_enc_size, padding=True)
+
+    for epoch in range(args.num_epochs):
+        GT.train()
+
+        logits, graph_repr, att = GT(g, g.ndata["feat"], g.ndata["PE"])
+        loss = criterion(logits[train_idx], label[train_idx])
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        GT.eval()
+        with torch.no_grad():
+            val_logits, val_graph_repr, val_att = GT(g, g.ndata["feat"], g.ndata["PE"])
+            val_loss = criterion(val_logits[valid_idx], label[valid_idx])
+            val_pred = torch.argmax(val_logits[valid_idx], dim=1)
+            val_accuracy = accuracy_score(label[valid_idx].cpu(), val_pred.cpu())
+
+        logging.info(f'Epoch [{epoch + 1}/{args.num_epochs}] | Train Loss: {loss.item():.4f} | '
+                     f'Val Loss: {val_loss.item():.4f} | Val Accuracy: {val_accuracy:.4f}')
 
     orig_outputs, orig_graph_repr, orig_att = \
-        evaluate_node_level(GAT, features, adj, label, test_idx, num_classes == 2)
+        evaluate_node_level(GT, features, adj, label, test_idx, num_classes == 2)
 
-    torch.save(GAT.state_dict(), os.path.join(save_dir, 'model_parameters.pth'))
+    torch.save(GT.state_dict(), os.path.join(save_dir, 'model_parameters.pth'))
 
     attacker = PGD(
         epsilon=args.epsilon,
@@ -72,9 +89,9 @@ if __name__ == '__main__':
         device=device
     )
 
-    GAT.eval()
-    adj_delta, feats_delta = attacker.attack(GAT, adj, features, test_idx, None)
-    new_outputs, new_graph_repr, new_att = GAT(torch.cat((features, feats_delta), dim=0), adj_delta)
+    GT.eval()
+    adj_delta, feats_delta = attacker.attack(GT, adj, features, test_idx, None)
+    new_outputs, new_graph_repr, new_att = GT(torch.cat((features, feats_delta), dim=0), adj_delta)
     new_outputs, new_graph_repr, new_att = \
         new_outputs[:orig_outputs.shape[0]], new_graph_repr[:orig_graph_repr.shape[0]], new_att[:orig_att.shape[0]]
     pred = torch.argmax(new_outputs[test_idx], dim=1)
@@ -89,7 +106,7 @@ if __name__ == '__main__':
     sp.save_npz(os.path.join(save_dir, 'adj_delta.npz'), adj_delta)
     torch.save(feats_delta, os.path.join(save_dir, 'feats_delta.pth'))
 
-    fidelity_pos_list, fidelity_neg_list = compute_fidelity(GAT, adj, features, label, test_idx)
+    fidelity_pos_list, fidelity_neg_list = compute_fidelity(GT, adj, features, label, test_idx)
     logging.info(f"fidelity_pos: {fidelity_pos_list}")
     logging.info(f"fidelity_neg: {fidelity_neg_list}")
     data = pd.DataFrame({'fidelity_pos': fidelity_pos_list, 'fidelity_neg': fidelity_neg_list})
