@@ -8,7 +8,7 @@ from grb.attack.base import InjectionAttack, EarlyStop
 from grb.evaluator import metric
 from grb.utils import utils
 
-from utils import topK_overlap_loss
+from utils import topK_overlap_loss, laplacian_pe
 
 
 class PGD(InjectionAttack):
@@ -233,6 +233,10 @@ class PGD(InjectionAttack):
                                                    device=self.device)
         features_attack = utils.feat_preprocess(features=features_attack, device=self.device)
         model.eval()
+
+        in_degrees = torch.tensor(adj_attacked_tensor.sum(axis=0)).squeeze()
+        pos_enc = laplacian_pe(adj_attacked_tensor, in_degrees, padding=True).to(features.device)
+        model.pos_enc = pos_enc
 
         for i in range(n_epoch):
             features_attack.requires_grad_(True)

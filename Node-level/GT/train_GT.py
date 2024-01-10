@@ -4,6 +4,7 @@ import argparse
 import pandas as pd
 import torch.nn as nn
 import torch.optim as optim
+
 from utils import *
 from models import GTNodeClassifier
 from load_dataset import load_dataset
@@ -54,13 +55,14 @@ if __name__ == '__main__':
     logging.info(f"Model: {GT}")
     logging.info(f"Optimizer: {optimizer}")
 
-    pos_enc = laplacian_pe(N, adj, g.degree[0], k=pos_enc_size, padding=True).to(device)
-    X = features, pos_enc
+    in_degrees = torch.tensor(adj.sum(axis=0)).squeeze()
+    pos_enc = laplacian_pe(adj, in_degrees, k=pos_enc_size, padding=True).to(device)
+    GT.pos_enc = pos_enc
 
     for epoch in range(args.num_epochs):
         GT.train()
 
-        logits, graph_repr, att = GT(X, adj)
+        logits, graph_repr, att = GT(features, adj)
         loss = criterion(logits[train_idx], label[train_idx])
 
         optimizer.zero_grad()
@@ -69,7 +71,7 @@ if __name__ == '__main__':
 
         GT.eval()
         with torch.no_grad():
-            val_logits, val_graph_repr, val_att = GT(X, adj)
+            val_logits, val_graph_repr, val_att = GT(features, adj)
             val_loss = criterion(val_logits[valid_idx], label[valid_idx])
             val_pred = torch.argmax(val_logits[valid_idx], dim=1)
             val_accuracy = accuracy_score(label[valid_idx].cpu(), val_pred.cpu())
@@ -79,7 +81,7 @@ if __name__ == '__main__':
 
     GT.eval()
     with torch.no_grad():
-        orig_outputs, orig_graph_repr, orig_att = GT(X, adj)
+        orig_outputs, orig_graph_repr, orig_att = GT(features, adj)
         test_pred = torch.argmax(orig_outputs[test_idx], dim=1)
         test_accuracy = accuracy_score(label[test_idx].cpu(), test_pred.cpu())
 
@@ -99,7 +101,9 @@ if __name__ == '__main__':
 
     GT.eval()
     adj_delta, feats_delta = attacker.attack(GT, adj, features, test_idx, None)
+
     new_outputs, new_graph_repr, new_att = GT(torch.cat((features, feats_delta), dim=0), adj_delta)
+
     new_outputs, new_graph_repr, new_att = \
         new_outputs[:orig_outputs.shape[0]], new_graph_repr[:orig_graph_repr.shape[0]], new_att[:orig_att.shape[0]]
     pred = torch.argmax(new_outputs[test_idx], dim=1)
@@ -114,6 +118,7 @@ if __name__ == '__main__':
     sp.save_npz(os.path.join(save_dir, 'adj_delta.npz'), adj_delta)
     torch.save(feats_delta, os.path.join(save_dir, 'feats_delta.pth'))
 
+    GT.pos_enc = pos_enc
     fidelity_pos_list, fidelity_neg_list = compute_fidelity(GT, adj, features, label, test_idx)
     logging.info(f"fidelity_pos: {fidelity_pos_list}")
     logging.info(f"fidelity_neg: {fidelity_neg_list}")

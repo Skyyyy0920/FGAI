@@ -259,7 +259,8 @@ def feature_normalize(features):
     return features
 
 
-def laplacian_pe(n, adj, in_degrees, k, padding=False, return_eigval=False):
+def laplacian_pe(adj, in_degrees, k=8, padding=False, return_eigval=False):
+    n = adj.shape[0]
     if not padding and n <= k:
         assert (
                 "the number of eigenvectors k must be smaller than the number of "
@@ -269,7 +270,6 @@ def laplacian_pe(n, adj, in_degrees, k, padding=False, return_eigval=False):
     # get laplacian matrix as I - D^-0.5 * A * D^-0.5
     # A = g.adj_external(scipy_fmt="csr")  # adjacency matrix
     A = adj
-    in_degrees = torch.tensor(in_degrees)
     N = sp.diags(
         F.asnumpy(in_degrees).clip(1) ** -0.5, dtype=float
     )  # D^-1/2
