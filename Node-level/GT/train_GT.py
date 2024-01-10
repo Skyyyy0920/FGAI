@@ -7,14 +7,13 @@ import torch.optim as optim
 from utils import *
 from models import GTNodeClassifier
 from load_dataset import load_dataset
-from trainer import VanillaTrainer
 from attackers import PGD
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 if __name__ == '__main__':
-    dataset = 'amazon_photo'
-    # dataset = 'amazon_cs'
+    # dataset = 'amazon_photo'
+    dataset = 'amazon_cs'
     # dataset = 'coauthor_phy'
     # dataset = 'pubmed'
     # dataset = 'ogbn-arxiv'
@@ -30,11 +29,14 @@ if __name__ == '__main__':
     logging.info(f"args: {args}")
     logging.info(f"Saving path: {save_dir}")
 
-    adj, features, label, train_idx, valid_idx, test_idx, num_classes = load_dataset(args)
+    g, adj, features, label, train_idx, valid_idx, test_idx, num_classes = load_dataset(args)
+    N = len(features)
     pos_enc_size = 8
+    args.hid_dim = 80
 
     criterion = nn.CrossEntropyLoss()
     GT = GTNodeClassifier(
+        feats_size=features.shape[1],
         hidden_size=args.hid_dim,
         out_size=num_classes,
         pos_enc_size=pos_enc_size,
@@ -52,12 +54,13 @@ if __name__ == '__main__':
     logging.info(f"Model: {GT}")
     logging.info(f"Optimizer: {optimizer}")
 
-    g.ndata["PE"] = dgl.laplacian_pe(g, k=pos_enc_size, padding=True)
+    pos_enc = laplacian_pe(N, adj, g.degree[0], k=pos_enc_size, padding=True).to(device)
+    X = features, pos_enc
 
     for epoch in range(args.num_epochs):
         GT.train()
 
-        logits, graph_repr, att = GT(g, g.ndata["feat"], g.ndata["PE"])
+        logits, graph_repr, att = GT(X, adj)
         loss = criterion(logits[train_idx], label[train_idx])
 
         optimizer.zero_grad()
@@ -66,7 +69,7 @@ if __name__ == '__main__':
 
         GT.eval()
         with torch.no_grad():
-            val_logits, val_graph_repr, val_att = GT(g, g.ndata["feat"], g.ndata["PE"])
+            val_logits, val_graph_repr, val_att = GT(X, adj)
             val_loss = criterion(val_logits[valid_idx], label[valid_idx])
             val_pred = torch.argmax(val_logits[valid_idx], dim=1)
             val_accuracy = accuracy_score(label[valid_idx].cpu(), val_pred.cpu())
@@ -74,8 +77,13 @@ if __name__ == '__main__':
         logging.info(f'Epoch [{epoch + 1}/{args.num_epochs}] | Train Loss: {loss.item():.4f} | '
                      f'Val Loss: {val_loss.item():.4f} | Val Accuracy: {val_accuracy:.4f}')
 
-    orig_outputs, orig_graph_repr, orig_att = \
-        evaluate_node_level(GT, features, adj, label, test_idx, num_classes == 2)
+    GT.eval()
+    with torch.no_grad():
+        orig_outputs, orig_graph_repr, orig_att = GT(X, adj)
+        test_pred = torch.argmax(orig_outputs[test_idx], dim=1)
+        test_accuracy = accuracy_score(label[test_idx].cpu(), test_pred.cpu())
+
+    logging.info(f'Test Accuracy: {test_accuracy:.4f}')
 
     torch.save(GT.state_dict(), os.path.join(save_dir, 'model_parameters.pth'))
 

@@ -3,6 +3,7 @@ import torch
 import logging
 import numpy as np
 import scipy.sparse as sp
+from dgl import backend as F
 from sklearn.feature_selection import mutual_info_classif
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 
@@ -256,3 +257,46 @@ def feature_normalize(features):
     features = features * x_rev.unsqueeze(-1).expand_as(features)
 
     return features
+
+
+def laplacian_pe(n, adj, in_degrees, k, padding=False, return_eigval=False):
+    if not padding and n <= k:
+        assert (
+                "the number of eigenvectors k must be smaller than the number of "
+                + f"nodes n, {k} and {n} detected."
+        )
+
+    # get laplacian matrix as I - D^-0.5 * A * D^-0.5
+    # A = g.adj_external(scipy_fmt="csr")  # adjacency matrix
+    A = adj
+    in_degrees = torch.tensor(in_degrees)
+    N = sp.diags(
+        F.asnumpy(in_degrees).clip(1) ** -0.5, dtype=float
+    )  # D^-1/2
+    L = sp.eye(n) - N * A * N
+
+    # select eigenvectors with smaller eigenvalues O(n + klogk)
+    EigVal, EigVec = np.linalg.eig(L.toarray())
+    max_freqs = min(n - 1, k)
+    kpartition_indices = np.argpartition(EigVal, max_freqs)[: max_freqs + 1]
+    topk_eigvals = EigVal[kpartition_indices]
+    topk_indices = kpartition_indices[topk_eigvals.argsort()][1:]
+    topk_EigVec = EigVec[:, topk_indices]
+    eigvals = F.tensor(EigVal[topk_indices], dtype=F.float32)
+
+    # get random flip signs
+    rand_sign = 2 * (np.random.rand(max_freqs) > 0.5) - 1.0
+    PE = F.astype(F.tensor(rand_sign * topk_EigVec), F.float32)
+
+    # add paddings
+    if n <= k:
+        temp_EigVec = F.zeros(
+            [n, k - n + 1], dtype=F.float32, ctx=F.context(PE)
+        )
+        PE = F.cat([PE, temp_EigVec], dim=1)
+        temp_EigVal = F.tensor(np.full(k - n + 1, np.nan), F.float32)
+        eigvals = F.cat([eigvals, temp_EigVal], dim=0)
+
+    if return_eigval:
+        return PE, eigvals
+    return PE

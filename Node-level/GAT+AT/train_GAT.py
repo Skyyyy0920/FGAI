@@ -31,7 +31,7 @@ if __name__ == '__main__':
     logging.info(f"args: {args}")
     logging.info(f"Saving path: {save_dir}")
 
-    adj, features, label, train_idx, valid_idx, test_idx, num_classes = load_dataset(args)
+    _, adj, features, label, train_idx, valid_idx, test_idx, num_classes = load_dataset(args)
     in_feats = features.shape[1]
 
     criterion = nn.CrossEntropyLoss()

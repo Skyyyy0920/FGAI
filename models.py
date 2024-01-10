@@ -558,9 +558,9 @@ class GTLayer(nn.Module):
 
 
 class GTNodeClassifier(nn.Module):
-    def __init__(self, out_size, hidden_size=80, pos_enc_size=2, n_layers=8, n_heads=8):
+    def __init__(self, feats_size, out_size, hidden_size=80, pos_enc_size=2, n_layers=8, n_heads=8):
         super(GTNodeClassifier, self).__init__()
-        self.atom_encoder = AtomEncoder(hidden_size)
+        self.atom_encoder = nn.Linear(feats_size, hidden_size)
         self.pos_linear = nn.Linear(pos_enc_size, hidden_size)
         self.layers = nn.ModuleList(
             [GTLayer(hidden_size, n_heads) for _ in range(n_layers)]
@@ -573,10 +573,15 @@ class GTNodeClassifier(nn.Module):
             nn.Linear(hidden_size // 4, out_size),
         )
 
-    def forward(self, X, adj, pos_enc):
+    def forward(self, X_pos, adj):
+        X, pos_enc = X_pos
+        src, dst = adj.nonzero()
+        indices = torch.stack([torch.tensor(src).to(torch.int64), torch.tensor(dst).to(torch.int64)]).to(X.device)
+        N = adj.shape[0]
+        A = dglsp.spmatrix(indices, shape=(N, N))
         h = self.atom_encoder(X) + self.pos_linear(pos_enc)
         for layer in self.layers:
-            h, att = layer(h, adj)
+            h, att = layer(h, A)
         graph_representation = h.mean(dim=0)
         logits = self.predictor(h)
 

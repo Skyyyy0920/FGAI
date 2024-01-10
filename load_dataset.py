@@ -24,8 +24,8 @@ def load_dataset(args):
         num_classes = dataset.num_classes
         feats = g.ndata["feat"]
         src, dst = g.edges()
-        num_nodes = g.number_of_nodes()
-        adj = sp.csr_matrix((np.ones(len(src)), (src.cpu().numpy(), dst.cpu().numpy())), shape=(num_nodes, num_nodes))
+        N = g.number_of_nodes()
+        adj = sp.csr_matrix((np.ones(len(src)), (src.cpu().numpy(), dst.cpu().numpy())), shape=(N, N))
     elif args.dataset in ['cora', 'pubmed', 'citeseer']:
         if args.dataset == 'cora':
             dataset = CoraGraphDataset()
@@ -41,8 +41,8 @@ def load_dataset(args):
         train_idx, valid_idx, test_idx = g.ndata['train_mask'], g.ndata['val_mask'], g.ndata['test_mask']
         feats, label = g.ndata["feat"], g.ndata['label']
         src, dst = g.edges()
-        num_nodes = g.number_of_nodes()
-        adj = sp.csr_matrix((np.ones(len(src)), (src.cpu().numpy(), dst.cpu().numpy())), shape=(num_nodes, num_nodes))
+        N = g.number_of_nodes()
+        adj = sp.csr_matrix((np.ones(len(src)), (src.cpu().numpy(), dst.cpu().numpy())), shape=(N, N))
     elif args.dataset in ['questions', 'amazon-ratings', 'roman-empire']:
         if args.dataset == 'questions':
             dataset = QuestionsDataset()
@@ -59,8 +59,8 @@ def load_dataset(args):
         train_idx, valid_idx, test_idx = tra_idx.squeeze(), val_idx.squeeze(), test_idx.squeeze()
         feats, label = g.ndata["feat"], g.ndata['label']
         src, dst = g.edges()
-        num_nodes = g.number_of_nodes()
-        adj = sp.csr_matrix((np.ones(len(src)), (src.cpu().numpy(), dst.cpu().numpy())), shape=(num_nodes, num_nodes))
+        N = g.number_of_nodes()
+        adj = sp.csr_matrix((np.ones(len(src)), (src.cpu().numpy(), dst.cpu().numpy())), shape=(N, N))
     elif args.dataset in ['amazon_photo', 'amazon_cs', 'coauthor_cs', 'coauthor_phy']:
         dataset = NPZDataset(args.dataset, root="../dataset/", verbose=False)
         g = dataset.graph
@@ -71,10 +71,9 @@ def load_dataset(args):
         num_classes = g.num_classes
         adj = g.adj_matrix
         adj = adj + adj.transpose()
-        num_nodes = g.num_nodes
+        N = g.num_nodes
     else:
         raise ValueError(f"Unknown dataset name: {args.dataset}")
 
-    del g
-    logging.info(f"num_nodes: {num_nodes}")
-    return adj, feats.to(args.device), label.to(args.device), train_idx, valid_idx, test_idx, num_classes
+    logging.info(f"num_nodes: {N}")
+    return g, adj, feats.to(args.device), label.to(args.device), train_idx, valid_idx, test_idx, num_classes
