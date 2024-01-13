@@ -4,11 +4,12 @@ import argparse
 import pandas as pd
 import torch.nn as nn
 import torch.optim as optim
+
 from utils import *
 from models import GATNodeClassifier
-from load_dataset import load_dataset
 from trainer import AdvTrainer
 from attackers import PGD
+from load_dataset import load_dataset
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 device = 'cpu'

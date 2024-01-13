@@ -7,8 +7,9 @@ import torch.optim as optim
 
 from utils import *
 from models import GTNodeClassifier
-from load_dataset import load_dataset
+from trainer import VanillaTrainer
 from attackers import PGD
+from load_dataset import load_dataset
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -55,37 +56,20 @@ if __name__ == '__main__':
     logging.info(f"Model: {GT}")
     logging.info(f"Optimizer: {optimizer}")
 
-    in_degrees = torch.tensor(adj.sum(axis=0)).squeeze()
-    pos_enc = laplacian_pe(adj, in_degrees, k=pos_enc_size, padding=True).to(device)
+    pos_enc_path = f'./{dataset}_pos_enc.pth'
+    if os.path.exists(pos_enc_path):
+        pos_enc = torch.load(pos_enc_path)
+    else:
+        in_degrees = torch.tensor(adj.sum(axis=0)).squeeze()
+        pos_enc = laplacian_pe(adj, in_degrees, k=pos_enc_size, padding=True).to(device)
+        torch.save(pos_enc, pos_enc_path)
     GT.pos_enc = pos_enc
 
-    for epoch in range(args.num_epochs):
-        GT.train()
+    trainer = VanillaTrainer(GT, criterion, optimizer, args)
+    trainer.train(features, adj, label, train_idx, valid_idx)
 
-        logits, graph_repr, att = GT(features, adj)
-        loss = criterion(logits[train_idx], label[train_idx])
-
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
-        GT.eval()
-        with torch.no_grad():
-            val_logits, val_graph_repr, val_att = GT(features, adj)
-            val_loss = criterion(val_logits[valid_idx], label[valid_idx])
-            val_pred = torch.argmax(val_logits[valid_idx], dim=1)
-            val_accuracy = accuracy_score(label[valid_idx].cpu(), val_pred.cpu())
-
-        logging.info(f'Epoch [{epoch + 1}/{args.num_epochs}] | Train Loss: {loss.item():.4f} | '
-                     f'Val Loss: {val_loss.item():.4f} | Val Accuracy: {val_accuracy:.4f}')
-
-    GT.eval()
-    with torch.no_grad():
-        orig_outputs, orig_graph_repr, orig_att = GT(features, adj)
-        test_pred = torch.argmax(orig_outputs[test_idx], dim=1)
-        test_accuracy = accuracy_score(label[test_idx].cpu(), test_pred.cpu())
-
-    logging.info(f'Test Accuracy: {test_accuracy:.4f}')
+    orig_outputs, orig_graph_repr, orig_att = \
+        evaluate_node_level(GT, features, adj, label, test_idx, num_classes == 2)
 
     torch.save(GT.state_dict(), os.path.join(save_dir, 'model_parameters.pth'))
 
@@ -102,6 +86,10 @@ if __name__ == '__main__':
     GT.eval()
     adj_delta, feats_delta = attacker.attack(GT, adj, features, test_idx, None)
 
+    in_degrees = torch.tensor(adj_delta.sum(axis=0)).squeeze()
+    pos_enc = laplacian_pe(adj_delta, in_degrees, k=pos_enc_size, padding=True).to(device)
+    torch.save(pos_enc, f'./{dataset}_pos_enc_perturbed.pth')
+    GT.pos_enc = pos_enc
     new_outputs, new_graph_repr, new_att = GT(torch.cat((features, feats_delta), dim=0), adj_delta)
 
     new_outputs, new_graph_repr, new_att = \
@@ -118,7 +106,6 @@ if __name__ == '__main__':
     sp.save_npz(os.path.join(save_dir, 'adj_delta.npz'), adj_delta)
     torch.save(feats_delta, os.path.join(save_dir, 'feats_delta.pth'))
 
-    GT.pos_enc = pos_enc
     fidelity_pos_list, fidelity_neg_list = compute_fidelity(GT, adj, features, label, test_idx)
     logging.info(f"fidelity_pos: {fidelity_pos_list}")
     logging.info(f"fidelity_neg: {fidelity_neg_list}")

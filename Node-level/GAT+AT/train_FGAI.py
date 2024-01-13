@@ -3,13 +3,14 @@ import time
 import zipfile
 import argparse
 import pandas as pd
-from pathlib import Path
-from models import GATNodeClassifier
-from utils import *
-from trainer import FGAITrainer
-from load_dataset import load_dataset
-from attackers import PGD
 import torch.optim as optim
+from pathlib import Path
+
+from utils import *
+from models import GATNodeClassifier
+from trainer import FGAITrainer
+from attackers import PGD
+from load_dataset import load_dataset
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 device = 'cpu'
@@ -107,7 +108,7 @@ if __name__ == '__main__':
     # 6. Load pre-trained vanilla model
     # ==================================================================================================
     tim = '_20-11'
-    vanilla_model.load_state_dict(torch.load(f'./GAT_checkpoints/{dataset}{tim}/model_parameters.pth'))
+    vanilla_model.load_state_dict(torch.load(f'./vanilla_checkpoints/{dataset}{tim}/model_parameters.pth'))
 
     orig_outputs, orig_graph_repr, orig_att = \
         evaluate_node_level(vanilla_model, features, adj, label, test_idx, num_classes == 2)
@@ -129,8 +130,8 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 8. Evaluation
     # ==================================================================================================
-    adj_perturbed = sp.load_npz(f'./GAT_checkpoints/{args.dataset}{tim}/adj_delta.npz')
-    feats_perturbed = torch.load(f'./GAT_checkpoints/{args.dataset}{tim}/feats_delta.pth').to(device)
+    adj_perturbed = sp.load_npz(f'./vanilla_checkpoints/{args.dataset}{tim}/adj_delta.npz')
+    feats_perturbed = torch.load(f'./vanilla_checkpoints/{args.dataset}{tim}/feats_delta.pth').to(device)
 
     FGAI.eval()
     new_outputs, new_graph_repr, new_att = FGAI(torch.cat((features, feats_perturbed), dim=0), adj_perturbed)

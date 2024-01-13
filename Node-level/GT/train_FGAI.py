@@ -3,19 +3,21 @@ import time
 import zipfile
 import argparse
 import pandas as pd
-from pathlib import Path
-from models import GATNodeClassifier
-from utils import *
-from trainer import FGAITrainer
-from load_dataset import load_dataset
-from attackers import PGD
+import torch.nn as nn
 import torch.optim as optim
+from pathlib import Path
+
+from utils import *
+from models import GTNodeClassifier
+from trainer import FGAITrainer
+from attackers import PGD
+from load_dataset import load_dataset
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 if __name__ == '__main__':
-    dataset = 'amazon_photo'
-    # dataset = 'amazon_cs'
+    # dataset = 'amazon_photo'
+    dataset = 'amazon_cs'
     # dataset = 'coauthor_phy'
     # dataset = 'pubmed'
     # dataset = 'ogbn-arxiv'
@@ -56,28 +58,29 @@ if __name__ == '__main__':
     # 4. Prepare data
     # ==================================================================================================
     g, adj, features, label, train_idx, valid_idx, test_idx, num_classes = load_dataset(args)
-    in_feats = features.shape[1]
+    N = len(features)
+    pos_enc_size = 8
+    args.hid_dim = 80
 
     # ==================================================================================================
     # 5. Build models, define overall loss and optimizer
     # ==================================================================================================
-    vanilla_model = GATNodeClassifier(
-        feats_size=in_feats,
+    criterion = nn.CrossEntropyLoss()
+    vanilla_model = GTNodeClassifier(
+        feats_size=features.shape[1],
         hidden_size=args.hid_dim,
         out_size=num_classes,
+        pos_enc_size=pos_enc_size,
         n_layers=args.n_layers,
-        n_heads=args.n_heads,
-        feat_drop=args.feat_drop,
-        attn_drop=args.attn_drop
+        n_heads=args.n_heads
     ).to(device)
-    FGAI = GATNodeClassifier(
-        feats_size=in_feats,
+    FGAI = GTNodeClassifier(
+        feats_size=features.shape[1],
         hidden_size=args.hid_dim,
         out_size=num_classes,
+        pos_enc_size=pos_enc_size,
         n_layers=args.n_layers,
-        n_heads=args.n_heads,
-        feat_drop=args.feat_drop,
-        attn_drop=args.attn_drop
+        n_heads=args.n_heads
     ).to(device)
 
     optimizer = optim.Adam(
@@ -116,8 +119,8 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 6. Load pre-trained vanilla model
     # ==================================================================================================
-    tim = '_10-54'
-    vanilla_model.load_state_dict(torch.load(f'./GAT_checkpoints/{dataset}{tim}/model_parameters.pth'))
+    tim = '_20-21'
+    vanilla_model.load_state_dict(torch.load(f'./vanilla_checkpoints/{dataset}{tim}/model_parameters.pth'))
 
     orig_outputs, orig_graph_repr, orig_att = \
         evaluate_node_level(vanilla_model, features, adj, label, test_idx, num_classes == 2)
@@ -125,6 +128,15 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 7. Train our FGAI
     # ==================================================================================================
+    pos_enc_path = f'./{dataset}_pos_enc.pth'
+    if os.path.exists(pos_enc_path):
+        pos_enc = torch.load(pos_enc_path)
+    else:
+        in_degrees = torch.tensor(adj.sum(axis=0)).squeeze()
+        pos_enc = laplacian_pe(adj, in_degrees, k=pos_enc_size, padding=True).to(device)
+        torch.save(pos_enc, pos_enc_path)
+    FGAI.pos_enc = pos_enc
+
     idx_split = train_idx, valid_idx, test_idx
     trainer.train(features, adj, label, idx_split, orig_outputs, orig_graph_repr, orig_att)
 
@@ -139,10 +151,13 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 8. Evaluation
     # ==================================================================================================
-    adj_perturbed = sp.load_npz(f'./GAT_checkpoints/{args.dataset}{tim}/adj_delta.npz')
-    feats_perturbed = torch.load(f'./GAT_checkpoints/{args.dataset}{tim}/feats_delta.pth').to(device)
+    adj_perturbed = sp.load_npz(f'./vanilla_checkpoints/{args.dataset}{tim}/adj_delta.npz')
+    feats_perturbed = torch.load(f'./vanilla_checkpoints/{args.dataset}{tim}/feats_delta.pth').to(device)
 
     FGAI.eval()
+    if os.path.exists(f'./{dataset}_pos_enc_perturbed.pth'):
+        pos_enc = torch.load(pos_enc_path)
+    FGAI.pos_enc = pos_enc
     new_outputs, new_graph_repr, new_att = FGAI(torch.cat((features, feats_perturbed), dim=0), adj_perturbed)
     new_outputs, new_graph_repr, new_att = \
         new_outputs[:FGAI_outputs.shape[0]], new_graph_repr[:FGAI_graph_repr.shape[0]], new_att[:FGAI_att.shape[0]]
