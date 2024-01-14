@@ -1,3 +1,4 @@
+import os
 import random
 import numpy as np
 import scipy.sparse as sp
@@ -39,8 +40,6 @@ class PGD(InjectionAttack):
         Evaluation metric. Default: ``metric.eval_acc``.
     device : str, optional
         Device used to host data. Default: ``cpu``.
-    early_stop : bool, optional
-        Whether to early stop. Default: ``False``.
     verbose : bool, optional
         Whether to display logs. Default: ``True``.
 
@@ -57,8 +56,8 @@ class PGD(InjectionAttack):
                  eval_metric=metric.eval_acc,
                  K=5,
                  device='cpu',
-                 early_stop=True,
-                 verbose=True):
+                 verbose=True,
+                 dataset='amazon_cs'):
         self.device = device
         self.epsilon = epsilon
         self.n_epoch = n_epoch
@@ -70,11 +69,7 @@ class PGD(InjectionAttack):
         self.eval_metric = eval_metric
         self.K = K
         self.verbose = verbose
-
-        if early_stop:
-            self.early_stop = EarlyStop(patience=1000, epsilon=1e-4)
-        else:
-            self.early_stop = early_stop
+        self.dataset = dataset
 
     def attack(self, model, adj, features, target_mask, adj_norm_func):
         r"""
@@ -235,7 +230,7 @@ class PGD(InjectionAttack):
         features_attack = utils.feat_preprocess(features=features_attack, device=self.device)
         model.eval()
 
-        if isinstance(model, GTNodeClassifier):
+        if isinstance(model, GTNodeClassifier) and not os.path.exists(f'./{self.dataset}_pos_enc_perturbed.pth'):
             in_degrees = torch.tensor(adj_attacked_tensor.sum(axis=0)).squeeze()
             pos_enc = laplacian_pe(adj_attacked_tensor, in_degrees, padding=True).to(features.device)
             model.pos_enc = pos_enc
@@ -262,13 +257,6 @@ class PGD(InjectionAttack):
             features_attack = features_attack.detach()
 
             test_score = self.eval_metric(pred[:n_total][target_mask], orig_labels[target_mask])
-
-            if self.early_stop:
-                self.early_stop(test_score)
-                if self.early_stop.stop:
-                    print("Attacking: Early stopped.")
-                    self.early_stop = EarlyStop()
-                    return features_attack
 
             if self.verbose:
                 print("Attacking: Epoch {}, Loss: {:.5f}, test score: {:.5f}".format(i, pred_loss, test_score))

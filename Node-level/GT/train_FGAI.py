@@ -14,6 +14,7 @@ from attackers import PGD
 from load_dataset import load_dataset
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+# device = 'cpu'
 
 if __name__ == '__main__':
     # dataset = 'amazon_photo'
@@ -114,13 +115,20 @@ if __name__ == '__main__':
         device=device
     )
 
-    trainer = FGAITrainer(FGAI, optimizer, attacker_delta, attacker_rho, args)
+    loss_type = topK_overlap_loss
+    # loss_type = node_topK_overlap_loss
+    trainer = FGAITrainer(FGAI, optimizer, attacker_delta, attacker_rho, args, loss_type)
 
     # ==================================================================================================
     # 6. Load pre-trained vanilla model
     # ==================================================================================================
-    tim = '_20-21'
+    tim = '_12-57'
     vanilla_model.load_state_dict(torch.load(f'./vanilla_checkpoints/{dataset}{tim}/model_parameters.pth'))
+
+    pos_enc = torch.load(f'./{dataset}_pos_enc.pth').to(device)
+    vanilla_model.pos_enc = pos_enc
+    FGAI.pos_enc = pos_enc
+    FGAI.pos_enc_ = torch.load(f'./{dataset}_pos_enc_perturbed.pth').to(device)
 
     orig_outputs, orig_graph_repr, orig_att = \
         evaluate_node_level(vanilla_model, features, adj, label, test_idx, num_classes == 2)
@@ -128,15 +136,6 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 7. Train our FGAI
     # ==================================================================================================
-    pos_enc_path = f'./{dataset}_pos_enc.pth'
-    if os.path.exists(pos_enc_path):
-        pos_enc = torch.load(pos_enc_path)
-    else:
-        in_degrees = torch.tensor(adj.sum(axis=0)).squeeze()
-        pos_enc = laplacian_pe(adj, in_degrees, k=pos_enc_size, padding=True).to(device)
-        torch.save(pos_enc, pos_enc_path)
-    FGAI.pos_enc = pos_enc
-
     idx_split = train_idx, valid_idx, test_idx
     trainer.train(features, adj, label, idx_split, orig_outputs, orig_graph_repr, orig_att)
 
@@ -155,9 +154,6 @@ if __name__ == '__main__':
     feats_perturbed = torch.load(f'./vanilla_checkpoints/{args.dataset}{tim}/feats_delta.pth').to(device)
 
     FGAI.eval()
-    if os.path.exists(f'./{dataset}_pos_enc_perturbed.pth'):
-        pos_enc = torch.load(pos_enc_path)
-    FGAI.pos_enc = pos_enc
     new_outputs, new_graph_repr, new_att = FGAI(torch.cat((features, feats_perturbed), dim=0), adj_perturbed)
     new_outputs, new_graph_repr, new_att = \
         new_outputs[:FGAI_outputs.shape[0]], new_graph_repr[:FGAI_graph_repr.shape[0]], new_att[:FGAI_att.shape[0]]

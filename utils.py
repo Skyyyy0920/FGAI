@@ -139,9 +139,9 @@ def node_topK_overlap_loss(new_att, old_att, adj, K=2, metric='l1'):
     return loss
 
 
-def topK_overlap_loss(new_att, old_att, adj, K=2, metric='l1'):
-    new_att, old_att = new_att.squeeze(), old_att.squeeze()
-
+def topK_overlap_loss(new_att, old_att, adj, K=200000, metric='l1'):
+    new_att = new_att.transpose(0, 1)
+    old_att = old_att.transpose(0, 1)
     loss = 0
 
     idx_1 = torch.argsort(new_att, dim=-1, descending=True)
@@ -259,8 +259,8 @@ def feature_normalize(features):
     return features
 
 
-def laplacian_pe(adj, in_degrees, k=8, padding=False, return_eigval=False):
-    n = adj.shape[0]
+def laplacian_pe(A, in_degrees, k=8, padding=False, return_eigval=False):
+    n = A.shape[0]
     if not padding and n <= k:
         assert (
                 "the number of eigenvectors k must be smaller than the number of "
@@ -269,7 +269,6 @@ def laplacian_pe(adj, in_degrees, k=8, padding=False, return_eigval=False):
 
     # get laplacian matrix as I - D^-0.5 * A * D^-0.5
     # A = g.adj_external(scipy_fmt="csr")  # adjacency matrix
-    A = adj
     N = sp.diags(
         F.asnumpy(in_degrees).clip(1) ** -0.5, dtype=float
     )  # D^-1/2

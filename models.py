@@ -573,13 +573,18 @@ class GTNodeClassifier(nn.Module):
             nn.Linear(hidden_size // 4, out_size),
         )
         self.pos_enc = None
+        self.pos_enc_ = None
 
     def forward(self, X, adj):
+        if X.shape[0] == self.pos_enc.shape[0]:
+            pos_enc = self.pos_enc
+        else:
+            pos_enc = self.pos_enc_
         src, dst = adj.nonzero()
         indices = torch.stack([torch.tensor(src).to(torch.int64), torch.tensor(dst).to(torch.int64)]).to(X.device)
         N = adj.shape[0]
         A = dglsp.spmatrix(indices, shape=(N, N))
-        h = self.atom_encoder(X) + self.pos_linear(self.pos_enc)
+        h = self.atom_encoder(X) + self.pos_linear(pos_enc)
         for layer in self.layers:
             h, att = layer(h, A)
         graph_representation = h.mean(dim=0)
