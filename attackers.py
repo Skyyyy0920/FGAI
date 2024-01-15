@@ -232,8 +232,7 @@ class PGD(InjectionAttack):
 
         if isinstance(model, GTNodeClassifier) and not os.path.exists(f'./{self.dataset}_pos_enc_perturbed.pth'):
             in_degrees = torch.tensor(adj_attacked_tensor.sum(axis=0)).squeeze()
-            pos_enc = laplacian_pe(adj_attacked_tensor, in_degrees, padding=True).to(features.device)
-            model.pos_enc = pos_enc
+            model.pos_enc_ = laplacian_pe(adj_attacked_tensor, in_degrees, padding=True).to(features.device)
 
         for i in range(n_epoch):
             features_attack.requires_grad_(True)

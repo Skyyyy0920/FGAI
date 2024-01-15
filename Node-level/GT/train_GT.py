@@ -14,8 +14,8 @@ from load_dataset import load_dataset
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 if __name__ == '__main__':
-    # dataset = 'amazon_photo'
-    dataset = 'amazon_cs'
+    dataset = 'amazon_photo'
+    # dataset = 'amazon_cs'
     # dataset = 'coauthor_phy'
     # dataset = 'pubmed'
     # dataset = 'ogbn-arxiv'
@@ -65,6 +65,12 @@ if __name__ == '__main__':
         torch.save(pos_enc, pos_enc_path)
     GT.pos_enc = pos_enc
 
+    if os.path.exists(f'./{dataset}_pos_enc_perturbed.pth'):
+        GT.pos_enc_ = torch.load(f'./{dataset}_pos_enc_perturbed.pth')
+        need_update = False
+    else:
+        need_update = True
+
     trainer = VanillaTrainer(GT, criterion, optimizer, args)
     trainer.train(features, adj, label, train_idx, valid_idx)
 
@@ -86,12 +92,13 @@ if __name__ == '__main__':
     GT.eval()
     adj_delta, feats_delta = attacker.attack(GT, adj, features, test_idx, None)
 
-    in_degrees = torch.tensor(adj_delta.sum(axis=0)).squeeze()
-    pos_enc = laplacian_pe(adj_delta, in_degrees, k=pos_enc_size, padding=True).to(device)
-    torch.save(pos_enc, f'./{dataset}_pos_enc_perturbed.pth')
-    GT.pos_enc = pos_enc
-    new_outputs, new_graph_repr, new_att = GT(torch.cat((features, feats_delta), dim=0), adj_delta)
+    if need_update:
+        in_degrees = torch.tensor(adj_delta.sum(axis=0)).squeeze()
+        pos_enc = laplacian_pe(adj_delta, in_degrees, k=pos_enc_size, padding=True).to(device)
+        torch.save(pos_enc, f'./{dataset}_pos_enc_perturbed.pth')
+        GT.pos_enc_ = pos_enc
 
+    new_outputs, new_graph_repr, new_att = GT(torch.cat((features, feats_delta), dim=0), adj_delta)
     new_outputs, new_graph_repr, new_att = \
         new_outputs[:orig_outputs.shape[0]], new_graph_repr[:orig_graph_repr.shape[0]], new_att[:orig_att.shape[0]]
     pred = torch.argmax(new_outputs[test_idx], dim=1)

@@ -142,7 +142,6 @@ def node_topK_overlap_loss(new_att, old_att, adj, K=2, metric='l1'):
 def topK_overlap_loss(new_att, old_att, adj, K=200000, metric='l1'):
     new_att = new_att.transpose(0, 1)
     old_att = old_att.transpose(0, 1)
-    loss = 0
 
     idx_1 = torch.argsort(new_att, dim=-1, descending=True)
     idx_1 = idx_1[:K]
@@ -155,32 +154,32 @@ def topK_overlap_loss(new_att, old_att, adj, K=200000, metric='l1'):
     new_topK_2 = new_att.gather(-1, idx_2)
 
     if metric == 'l1':
-        loss += (torch.norm(old_topK_1 - new_topK_1, p=1) + torch.norm(new_topK_2 - old_topK_2, p=1)) / (2 * K)
+        loss = (torch.norm(old_topK_1 - new_topK_1, p=1) + torch.norm(new_topK_2 - old_topK_2, p=1)) / (2 * K)
     elif metric == 'l2':
-        loss += (torch.norm(old_topK_1 - new_topK_1, p=2) + torch.norm(new_topK_2 - old_topK_2, p=2)) / (2 * K)
+        loss = (torch.norm(old_topK_1 - new_topK_1, p=2) + torch.norm(new_topK_2 - old_topK_2, p=2)) / (2 * K)
     elif metric == "kl-full":
-        loss += kl(new_att, old_att)
+        loss = kl(new_att, old_att)
     elif metric == "jsd-full":
-        loss += JSD(new_att, old_att)
+        loss = JSD(new_att, old_att)
     elif metric == "kl-topk":
         gt_Topk_1_normed = torch.nn.functional.softmax(new_topK_1, dim=-1)
         pred_TopK_1_normed = torch.nn.functional.softmax(old_topK_1, dim=-1)
         gt_TopK_2_normed = torch.nn.functional.softmax(new_topK_2, dim=-1)
         pred_TopK_2_normed = torch.nn.functional.softmax(old_topK_2, dim=-1)
-        loss += (kl(gt_Topk_1_normed, pred_TopK_1_normed) + kl(gt_TopK_2_normed, pred_TopK_2_normed)) / 2
+        loss = (kl(gt_Topk_1_normed, pred_TopK_1_normed) + kl(gt_TopK_2_normed, pred_TopK_2_normed)) / 2
     elif metric == "jsd-topk":
         gt_Topk_1_normed = torch.nn.functional.softmax(new_topK_1, dim=-1)
         pred_TopK_1_normed = torch.nn.functional.softmax(old_topK_1, dim=-1)
         gt_TopK_2_normed = torch.nn.functional.softmax(new_topK_2, dim=-1)
         pred_TopK_2_normed = torch.nn.functional.softmax(old_topK_2, dim=-1)
-        loss += (JSD(gt_Topk_1_normed, pred_TopK_1_normed) + JSD(gt_TopK_2_normed, pred_TopK_2_normed)) / 2
+        loss = (JSD(gt_Topk_1_normed, pred_TopK_1_normed) + JSD(gt_TopK_2_normed, pred_TopK_2_normed)) / 2
     else:
         raise ValueError(f"Unknown metric: {metric}")
 
     return loss
 
 
-def evaluate_node_level(model, features, adj, label, test_idx, roc_auc=True):
+def evaluate_node_level(model, features, adj, label, test_idx, roc_auc=False):
     model.eval()
     with torch.no_grad():
         orig_outputs, orig_graph_repr, orig_att = model(features, adj)
