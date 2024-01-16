@@ -56,7 +56,7 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 4. Prepare data
     # ==================================================================================================
-    _, adj, features, label, train_idx, valid_idx, test_idx, num_classes = load_dataset(args)
+    g, adj, features, label, train_idx, valid_idx, test_idx, num_classes = load_dataset(args)
     in_feats = features.shape[1]
 
     # ==================================================================================================
@@ -117,7 +117,7 @@ if __name__ == '__main__':
     # 7. Train our FGAI
     # ==================================================================================================
     idx_split = train_idx, valid_idx, test_idx
-    trainer.train(features, adj, label, idx_split, orig_outputs, orig_graph_repr, orig_att, save_dir)
+    # trainer.train(features, adj, label, idx_split, orig_outputs, orig_graph_repr, orig_att, save_dir)
 
     FGAI_outputs, FGAI_graph_repr, FGAI_att = evaluate_node_level(FGAI, features, adj, label, test_idx)
 
@@ -144,7 +144,7 @@ if __name__ == '__main__':
     logging.info(f"JSD: {JSD_score}")
     logging.info(f"TVD: {TVD_score}")
 
-    fidelity_pos_list, fidelity_neg_list = compute_fidelity(FGAI, adj, features, label, test_idx)
+    fidelity_pos_list, fidelity_neg_list = compute_fidelity(FGAI, adj, features, label, test_idx, FGAI_att)
     logging.info(f"fidelity_pos: {fidelity_pos_list}")
     logging.info(f"fidelity_neg: {fidelity_neg_list}")
     data = pd.DataFrame({'fidelity_pos': fidelity_pos_list, 'fidelity_neg': fidelity_neg_list})

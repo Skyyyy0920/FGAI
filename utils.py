@@ -4,8 +4,8 @@ import logging
 import numpy as np
 import scipy.sparse as sp
 from dgl import backend as F
-from sklearn.feature_selection import mutual_info_classif
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
+from scipy.sparse import csr_matrix
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
@@ -217,24 +217,30 @@ def evaluate_graph_level(model, test_loader, device):
     logging.info(f'Test Accuracy: {accuracy:.4f} | Precision: {precision:.4f} | Recall: {recall:.4f} | F1: {f1:.4f}')
 
 
-def compute_fidelity(model, adj, feats, labels, test_idx):
+def compute_fidelity(model, adj, feats, labels, test_idx, attention):
     model.eval()
-
-    variances = torch.var(feats, dim=0)
-    sorted_indices = torch.argsort(variances)
+    rows, cols = adj.nonzero()
+    shape = adj.shape
+    sorted_indices = torch.argsort(attention, descending=True).cpu().numpy()
 
     fidelity_pos_list, fidelity_neg_list = [], []
     for split in [1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1]:
-        imp_indices = sorted_indices[-int(feats.shape[1] * split):]
-        unimp_indices = sorted_indices[:int(feats.shape[1] * split)]
-        feats_imp = torch.zeros_like(feats)
-        feats_imp[:, imp_indices] = feats[:, imp_indices]
-        feats_unimp = torch.zeros_like(feats)
-        feats_unimp[:, unimp_indices] = feats[:, unimp_indices]
+        num_edges_to_keep = int(split * len(attention))
+        edges_to_keep = sorted_indices[:num_edges_to_keep]
+        rows_to_keep = rows[edges_to_keep]
+        cols_to_keep = cols[edges_to_keep]
+        data = np.ones(len(rows_to_keep))
+        adj_imp = csr_matrix((data, (rows_to_keep, cols_to_keep)), shape)
+
+        edges_to_keep = sorted_indices[-num_edges_to_keep:]
+        rows_to_keep = rows[edges_to_keep]
+        cols_to_keep = cols[edges_to_keep]
+        data = np.ones(len(rows_to_keep))
+        adj_unimp = csr_matrix((data, (rows_to_keep, cols_to_keep)), shape)
 
         outputs, _, _ = model(feats, adj)
-        outputs_wo_imp, _, _ = model(feats_unimp, adj)
-        outputs_wo_unimp, _, _ = model(feats_imp, adj)
+        outputs_wo_imp, _, _ = model(feats, adj_unimp)
+        outputs_wo_unimp, _, _ = model(feats, adj_imp)
         pred = torch.argmax(outputs, dim=1)[test_idx]
         pred_wo_imp = torch.argmax(outputs_wo_imp, dim=1)[test_idx]
         pred_wo_unimp = torch.argmax(outputs_wo_unimp, dim=1)[test_idx]

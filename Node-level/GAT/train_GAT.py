@@ -90,7 +90,7 @@ if __name__ == '__main__':
     sp.save_npz(os.path.join(save_dir, 'adj_delta.npz'), adj_delta)
     torch.save(feats_delta, os.path.join(save_dir, 'feats_delta.pth'))
 
-    fidelity_pos_list, fidelity_neg_list = compute_fidelity(GAT, adj, features, label, test_idx)
+    fidelity_pos_list, fidelity_neg_list = compute_fidelity(GAT, adj, features, label, test_idx, orig_att)
     logging.info(f"fidelity_pos: {fidelity_pos_list}")
     logging.info(f"fidelity_neg: {fidelity_neg_list}")
     data = pd.DataFrame({'fidelity_pos': fidelity_pos_list, 'fidelity_neg': fidelity_neg_list})
