@@ -140,8 +140,9 @@ def node_topK_overlap_loss(new_att, old_att, adj, K=2, metric='l1'):
 
 
 def topK_overlap_loss(new_att, old_att, adj, K=200000, metric='l1'):
-    new_att = new_att.transpose(0, 1)
-    old_att = old_att.transpose(0, 1)
+    if len(new_att.shape) == 2:
+        new_att = new_att.transpose(0, 1)
+        old_att = old_att.transpose(0, 1)
 
     idx_1 = torch.argsort(new_att, dim=-1, descending=True)
     idx_1 = idx_1[:K]

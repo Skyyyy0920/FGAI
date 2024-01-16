@@ -93,7 +93,8 @@ if __name__ == '__main__':
         feat_lim_min=-1,
         feat_lim_max=1,
         loss=TVD,
-        device=device
+        device=device,
+        dataset=dataset
     )
     attacker_rho = PGD(
         epsilon=args.epsilon,
@@ -104,7 +105,8 @@ if __name__ == '__main__':
         feat_lim_max=1,
         loss=topK_overlap_loss,
         K=args.K_rho,
-        device=device
+        device=device,
+        dataset=dataset
     )
 
     loss_type = topK_overlap_loss
@@ -127,7 +129,7 @@ if __name__ == '__main__':
     # 7. Train our FGAI
     # ==================================================================================================
     idx_split = train_idx, valid_idx, test_idx
-    trainer.train(features, adj, label, idx_split, orig_outputs, orig_graph_repr, orig_att)
+    trainer.train(features, adj, label, idx_split, orig_outputs, orig_graph_repr, orig_att, save_dir)
 
     FGAI_outputs, _, FGAI_att = evaluate_node_level(FGAI, features, adj, label, test_idx)
 

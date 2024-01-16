@@ -63,13 +63,6 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 5. Build models, define overall loss and optimizer
     # ==================================================================================================
-    vanilla_model = GATNodeClassifier(feats_size=in_feats,
-                                      hidden_size=args.hid_dim,
-                                      out_size=num_classes,
-                                      n_layers=args.n_layers,
-                                      n_heads=args.n_heads,
-                                      feat_drop=args.feat_drop,
-                                      attn_drop=args.attn_drop).to(device)
     FGAI = GATNodeClassifier(feats_size=in_feats,
                              hidden_size=args.hid_dim,
                              out_size=num_classes,
@@ -108,19 +101,17 @@ if __name__ == '__main__':
     # 6. Load pre-trained vanilla model
     # ==================================================================================================
     tim = '_20-11'
-    vanilla_model.load_state_dict(torch.load(f'./vanilla_checkpoints/{dataset}{tim}/model_parameters.pth'))
+    FGAI.load_state_dict(torch.load(f'./vanilla_checkpoints/{dataset}{tim}/model_parameters.pth'))
 
-    orig_outputs, orig_graph_repr, orig_att = \
-        evaluate_node_level(vanilla_model, features, adj, label, test_idx, num_classes == 2)
+    orig_outputs, orig_graph_repr, orig_att = evaluate_node_level(FGAI, features, adj, label, test_idx)
 
     # ==================================================================================================
     # 7. Train our FGAI
     # ==================================================================================================
     idx_split = train_idx, valid_idx, test_idx
-    trainer.train(features, adj, label, idx_split, orig_outputs, orig_graph_repr, orig_att)
+    trainer.train(features, adj, label, idx_split, orig_outputs, orig_graph_repr, orig_att, save_dir)
 
-    FGAI_outputs, FGAI_graph_repr, FGAI_att = \
-        evaluate_node_level(FGAI, features, adj, label, test_idx, num_classes == 2)
+    FGAI_outputs, FGAI_graph_repr, FGAI_att = evaluate_node_level(FGAI, features, adj, label, test_idx)
 
     # ==================================================================================================
     # 7. Save FGAI
@@ -134,9 +125,8 @@ if __name__ == '__main__':
     feats_perturbed = torch.load(f'./vanilla_checkpoints/{args.dataset}{tim}/feats_delta.pth').to(device)
 
     FGAI.eval()
-    new_outputs, new_graph_repr, new_att = FGAI(torch.cat((features, feats_perturbed), dim=0), adj_perturbed)
-    new_outputs, new_graph_repr, new_att = \
-        new_outputs[:FGAI_outputs.shape[0]], new_graph_repr[:FGAI_graph_repr.shape[0]], new_att[:FGAI_att.shape[0]]
+    new_outputs, _, new_att = FGAI(torch.cat((features, feats_perturbed), dim=0), adj_perturbed)
+    new_outputs, new_att = new_outputs[:FGAI_outputs.shape[0]], new_att[:FGAI_att.shape[0]]
     pred = torch.argmax(new_outputs[test_idx], dim=1)
     accuracy = accuracy_score(label[test_idx].cpu(), pred.cpu())
     logging.info(f"Accuracy after attack: {accuracy:.4f}")

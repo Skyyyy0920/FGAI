@@ -86,7 +86,8 @@ if __name__ == '__main__':
         n_edge_max=args.n_edge_max,
         feat_lim_min=-1,
         feat_lim_max=1,
-        device=device
+        device=device,
+        dataset=dataset
     )
 
     GT.eval()

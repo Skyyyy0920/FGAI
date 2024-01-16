@@ -1,5 +1,9 @@
 from utils import *
+import matplotlib
 import torch.nn.functional as F
+import matplotlib.pyplot as plt
+
+matplotlib.use('Agg')
 
 
 class VanillaTrainer(object):
@@ -85,11 +89,16 @@ class FGAITrainer(object):
         self.early_stopping = args.early_stopping
         self.overlap_loss = loss_type
 
-    def train(self, features, adj, label, idx_split, orig_outputs, orig_graph_repr, orig_att):
+    def train(self, features, adj, label, idx_split, orig_outputs, orig_graph_repr, orig_att, save_dir):
         train_idx, valid_idx, test_idx = idx_split
         best_val_loss = float('inf')
         current_patience = 0
         early_stopping_flag = False
+        closeness_losses = []
+        adversarial_losses = []
+        stability_losses = []
+        similarity_losses = []
+        total_losses = []
         for epoch in range(self.num_epochs):
             self.model.train()
 
@@ -140,11 +149,34 @@ class FGAITrainer(object):
                     early_stopping_flag = True
 
             logging.info(f'Epoch [{epoch + 1}/{self.num_epochs}] | Train Loss: {loss.item():.4f} | '
-                         f'Val loss: {val_loss} | Val Accuracy: {val_accuracy:.4f}')
-            logging.info(f'Loss item: {closeness_of_prediction_loss}, '
-                         f'{adversarial_loss * self.lambda_1}, '
-                         f'{stability_of_explanation_loss * self.lambda_2}, '
-                         f'{similarity_of_explanation_loss * self.lambda_3}')
+                         f'Val loss: {val_loss.item()} | Val Accuracy: {val_accuracy:.4f}')
+            logging.info(f'Loss item: {closeness_of_prediction_loss.item()}, '
+                         f'{adversarial_loss.item() * self.lambda_1}, '
+                         f'{stability_of_explanation_loss.item() * self.lambda_2}, '
+                         f'{similarity_of_explanation_loss.item() * self.lambda_3}')
+            total_losses.append(loss.item())
+            closeness_losses.append(closeness_of_prediction_loss.item())
+            adversarial_losses.append(adversarial_loss.item() * self.lambda_1)
+            stability_losses.append(stability_of_explanation_loss.item() * self.lambda_2)
+            similarity_losses.append(similarity_of_explanation_loss.item() * self.lambda_3)
 
             if early_stopping_flag:
                 break
+
+        plt.figure(figsize=(10, 6))
+        epochs = range(0, epoch)
+
+        plt.plot(epochs, closeness_losses[1:], label='Closeness Loss')
+        plt.plot(epochs, adversarial_losses[1:], label='Adversarial Loss')
+        plt.plot(epochs, stability_losses[1:], label='Stability of Explanation Loss')
+        plt.plot(epochs, similarity_losses[1:], label='Similarity of Explanation Loss')
+        plt.plot(epochs, total_losses[1:], label='Total Loss', linestyle='--', color='black')
+
+        plt.xlabel('Epochs')
+        plt.ylabel('Loss')
+        plt.title('Loss Components Over Epochs')
+        plt.legend()
+        plt.grid(True)
+
+        plt.tight_layout()
+        plt.savefig(f'{save_dir}/loss_components.pdf')
