@@ -591,3 +591,17 @@ class GTNodeClassifier(nn.Module):
         logits = self.predictor(h)
 
         return logits, graph_representation, att.val
+
+
+class ModelForExplain(nn.Module):
+    def __init__(self, model):
+        super(ModelForExplain, self).__init__()
+        self.model = model
+
+    def forward(self, graph, feat):
+        src, dst = graph.edges()
+        N = graph.number_of_nodes()
+        adj = sp.csr_matrix((np.ones(len(src)), (src.cpu().numpy(), dst.cpu().numpy())), shape=(N, N))
+        outputs, graph_repr, att = self.model(feat, adj)
+
+        return outputs

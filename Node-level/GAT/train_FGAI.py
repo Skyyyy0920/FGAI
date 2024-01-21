@@ -10,13 +10,14 @@ from utils import *
 from models import GATNodeClassifier
 from trainer import FGAITrainer
 from attackers import PGD
+from explainer import PGExplainer, GNNExplainer
 from load_dataset import load_dataset
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 if __name__ == '__main__':
-    dataset = 'amazon_photo'
-    # dataset = 'amazon_cs'
+    # dataset = 'amazon_photo'
+    dataset = 'amazon_cs'
     # dataset = 'coauthor_phy'
     # dataset = 'pubmed'
     # dataset = 'ogbn-arxiv'
@@ -108,7 +109,7 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 6. Load pre-trained vanilla model
     # ==================================================================================================
-    tim = '_00-27'
+    tim = '_20-15'
     FGAI.load_state_dict(torch.load(f'./vanilla_checkpoints/{dataset}{tim}/model_parameters.pth'))
 
     orig_outputs, orig_graph_repr, orig_att = evaluate_node_level(FGAI, features, adj, label, test_idx)
@@ -117,7 +118,7 @@ if __name__ == '__main__':
     # 7. Train our FGAI
     # ==================================================================================================
     idx_split = train_idx, valid_idx, test_idx
-    # trainer.train(features, adj, label, idx_split, orig_outputs, orig_graph_repr, orig_att, save_dir)
+    trainer.train(features, adj, label, idx_split, orig_outputs, orig_graph_repr, orig_att, save_dir)
 
     FGAI_outputs, FGAI_graph_repr, FGAI_att = evaluate_node_level(FGAI, features, adj, label, test_idx)
 

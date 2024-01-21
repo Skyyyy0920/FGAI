@@ -12,13 +12,12 @@ from attackers import PGD
 from load_dataset import load_dataset
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-# device = 'cpu'
 
 if __name__ == '__main__':
-    # dataset = 'amazon_photo'
+    dataset = 'amazon_photo'
     # dataset = 'amazon_cs'
     # dataset = 'coauthor_phy'
-    dataset = 'pubmed'
+    # dataset = 'pubmed'
     # dataset = 'ogbn-arxiv'
 
     with open(f"./optimized_hyperparameter_configurations/{dataset}.yml", 'r') as file:
