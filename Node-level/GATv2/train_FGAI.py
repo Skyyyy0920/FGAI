@@ -109,7 +109,7 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 6. Load pre-trained vanilla model
     # ==================================================================================================
-    tim = '_18-33'
+    tim = '_16-37'
     FGAI.load_state_dict(torch.load(f'./vanilla_checkpoints/{dataset}{tim}/model_parameters.pth'))
 
     orig_outputs, orig_graph_repr, orig_att = evaluate_node_level(FGAI, features, adj, label, test_idx)

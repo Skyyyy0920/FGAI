@@ -6,10 +6,9 @@ import torch.nn as nn
 import torch.optim as optim
 
 from utils import *
-from models import GATNodeClassifier, ModelForExplain
+from models import GATNodeClassifier
 from trainer import VanillaTrainer
 from attackers import PGD
-from explainer import PGExplainer, GNNExplainer
 from load_dataset import load_dataset
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -18,7 +17,8 @@ if __name__ == '__main__':
     # dataset = 'amazon_photo'
     # dataset = 'amazon_cs'
     # dataset = 'coauthor_phy'
-    dataset = 'pubmed'
+    dataset = 'coauthor_cs'
+    # dataset = 'pubmed'
     # dataset = 'ogbn-arxiv'
 
     with open(f"./optimized_hyperparameter_configurations/{dataset}.yml", 'r') as file:
@@ -96,28 +96,3 @@ if __name__ == '__main__':
     logging.info(f"fidelity_neg: {fidelity_neg_list}")
     data = pd.DataFrame({'fidelity_pos': fidelity_pos_list, 'fidelity_neg': fidelity_neg_list})
     data.to_csv(os.path.join(save_dir, 'fidelity_data.txt'), sep=',', index=False)
-
-    model_for_explain = ModelForExplain(GAT)
-
-    explainer = GNNExplainer(model_for_explain, num_hops=1)
-    new_center, sg, feat_mask, edge_mask = explainer.explain_node(0, g, features)
-    print(new_center, sg, feat_mask, edge_mask)
-
-    # Initialize the explainer
-    explainer = PGExplainer(model_for_explain, num_classes, num_hops=2, explain_graph=False)
-
-    # Train the explainer
-    # Define explainer temperature parameter
-    init_tmp, final_tmp = 5.0, 1.0
-    optimizer_exp = torch.optim.Adam(explainer.parameters(), lr=0.01)
-    epochs = 10
-    for epoch in range(epochs):
-        tmp = float(init_tmp * np.power(final_tmp / init_tmp, epoch / epochs))
-        loss = explainer.train_step_node(g.nodes(), g, features, tmp)
-        optimizer_exp.zero_grad()
-        loss.backward()
-        optimizer_exp.step()
-
-    # Explain the prediction for graph 0
-    probs, edge_weight, bg, inverse_indices = explainer.explain_node(0, g, features)
-    print(probs)

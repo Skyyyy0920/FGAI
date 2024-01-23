@@ -215,10 +215,11 @@ class GATv2NodeClassifier(nn.Module):
             x = x.flatten(1)  # use concat to handle multi-head. for mean method, use x = x.mean(1)
             x = self.dropout(x)
         graph_representation = x.mean(dim=0)
-        x = self.out_layer(g, x)
+        x, att = self.out_layer(g, x, get_attention=True)
+        # x = self.out_layer(g, x)
         logits = x.flatten(1)
 
-        return logits, graph_representation, att
+        return logits, graph_representation, att.squeeze()
 
 
 class GATGraphClassifier(nn.Module):

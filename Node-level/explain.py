@@ -2,25 +2,12 @@ import yaml
 import argparse
 from models import *
 from utils import *
+from explainer import *
 from load_dataset import load_dataset
 import networkx as nx
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import matplotlib.gridspec as gridspec
-
-
-def ranking_value(orig_att):
-    K = int(len(orig_att) * 0.4)
-    K = 50
-    sorted_indices = torch.argsort(orig_att, descending=True)
-    ranks = torch.arange(1, len(orig_att) + 1, dtype=torch.float32)
-    discrete_values = (len(orig_att) - ranks + 1) / len(orig_att)
-    discrete_values[ranks > K] = 0
-    discrete_values[ranks <= K] = 1
-    sorted_discrete_values = discrete_values[sorted_indices]
-
-    return sorted_discrete_values
-
 
 # dataset = 'amazon_photo'
 # dataset = 'amazon_cs'
@@ -34,8 +21,8 @@ with open(f"./{exp}/optimized_hyperparameter_configurations/FGAI_{dataset}.yml",
 args = argparse.Namespace(**args)
 args.device = 'cpu'
 
-adj, feats, label, train_idx, valid_idx, test_idx, num_classes = load_dataset(args)
-in_feats = feats.shape[1]
+g, adj, features, label, train_idx, valid_idx, test_idx, num_classes = load_dataset(args)
+in_feats = features.shape[1]
 g_dgl = dgl.from_scipy(adj).to(args.device)
 
 vanilla = GATNodeClassifier(feats_size=in_feats,
@@ -59,31 +46,40 @@ tim2 = '_10-06_10-41'
 vanilla.load_state_dict(torch.load(f'./{exp}/GAT_checkpoints/{dataset}{tim1}/model_parameters.pth'))
 FGAI.load_state_dict(torch.load(f'./{exp}/FGAI_checkpoints/{dataset}{tim2}/FGAI_parameters.pth'))
 
-orig_outputs, _, orig_att = evaluate_node_level(vanilla, feats, adj, label, test_idx, num_classes == 2)
-pred = torch.argmax(orig_outputs[test_idx], dim=1)
-accuracy = accuracy_score(label[test_idx].cpu(), pred.cpu())
-print(f"vanilla accuracy: {accuracy:.4f}")
-FGAI_outputs, _, FGAI_att = evaluate_node_level(FGAI, feats, adj, label, test_idx, num_classes == 2)
-pred = torch.argmax(FGAI_outputs[test_idx], dim=1)
-accuracy = accuracy_score(label[test_idx].cpu(), pred.cpu())
-print(f"FGAI accuracy: {accuracy:.4f}")
-
 adj_perturbed = sp.load_npz(f'./{exp}/GAT_checkpoints/{args.dataset}{tim1}/adj_delta.npz')
 feats_perturbed = torch.load(f'./{exp}/GAT_checkpoints/{args.dataset}{tim1}/feats_delta.pth').to(args.device)
 
-vanilla.eval()
-new_outputs, _, new_att = vanilla(torch.cat((feats, feats_perturbed), dim=0), adj_perturbed)
-new_outputs, new_att = new_outputs[:FGAI_outputs.shape[0]], new_att[:FGAI_att.shape[0]]
-pred = torch.argmax(new_outputs[test_idx], dim=1)
-accuracy = accuracy_score(label[test_idx].cpu(), pred.cpu())
-print(f"Vanilla accuracy after attack: {accuracy:.4f}")
+model_for_explain = ModelForExplain(vanilla)
 
-FGAI.eval()
-new_FGAI_outputs, _, new_FGAI_att = FGAI(torch.cat((feats, feats_perturbed), dim=0), adj_perturbed)
-new_FGAI_outputs, new_FGAI_att = new_FGAI_outputs[:FGAI_outputs.shape[0]], new_FGAI_att[:FGAI_att.shape[0]]
-FGAI_pred = torch.argmax(new_FGAI_outputs[test_idx], dim=1)
-accuracy = accuracy_score(label[test_idx].cpu(), FGAI_pred.cpu())
-print(f"FGAI accuracy after attack: {accuracy:.4f}")
+GNN_expl = GNNExplainer(model_for_explain, num_hops=1)
+new_center, sg, feat_mask, edge_mask = GNN_expl.explain_node(0, g, features)
+print(new_center, sg, feat_mask, edge_mask)
+
+# # Initialize the explainer
+# PGexpl = PGExplainer(model_for_explain, num_classes, num_hops=2, explain_graph=False)
+#
+# # Train the explainer
+# # Define explainer temperature parameter
+# init_tmp, final_tmp = 5.0, 1.0
+# optimizer_exp = torch.optim.Adam(PGexpl.parameters(), lr=0.01)
+# epochs = 10
+# for epoch in range(epochs):
+#     tmp = float(init_tmp * np.power(final_tmp / init_tmp, epoch / epochs))
+#     loss = PGexpl.train_step_node(g.nodes(), g, features, tmp)
+#     optimizer_exp.zero_grad()
+#     loss.backward()
+#     optimizer_exp.step()
+#
+# # Explain the prediction for graph 0
+# probs, edge_weight, bg, inverse_indices = PGexpl.explain_node(0, g, features)
+# print(probs)
+
+
+
+
+exit()
+
+
 
 # for node_ID in g_dgl.nodes():
 #     neighbor_list = []

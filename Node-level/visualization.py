@@ -1,7 +1,6 @@
-import dgl
 import yaml
 import argparse
-from models import GATNodeClassifier
+from models import *
 from utils import *
 from load_dataset import load_dataset
 import networkx as nx

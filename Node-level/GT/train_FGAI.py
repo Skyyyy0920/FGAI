@@ -116,7 +116,7 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 6. Load pre-trained vanilla model
     # ==================================================================================================
-    tim = '_22-12'
+    tim = '_21-22'
     FGAI.load_state_dict(torch.load(f'./vanilla_checkpoints/{dataset}{tim}/model_parameters.pth'))
 
     FGAI.pos_enc = torch.load(f'./{dataset}_pos_enc.pth').to(device)
@@ -156,7 +156,8 @@ if __name__ == '__main__':
     logging.info(f"JSD: {JSD_score}")
     logging.info(f"TVD: {TVD_score}")
 
-    fidelity_pos_list, fidelity_neg_list = compute_fidelity(FGAI, adj, features, label, test_idx, FGAI_att)
+    avg_att = torch.mean(FGAI_att, dim=1)
+    fidelity_pos_list, fidelity_neg_list = compute_fidelity(FGAI, adj, features, label, test_idx, avg_att)
     logging.info(f"fidelity_pos: {fidelity_pos_list}")
     logging.info(f"fidelity_neg: {fidelity_neg_list}")
     data = pd.DataFrame({'fidelity_pos': fidelity_pos_list, 'fidelity_neg': fidelity_neg_list})

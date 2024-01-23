@@ -10,15 +10,15 @@ from utils import *
 from models import GATNodeClassifier
 from trainer import FGAITrainer
 from attackers import PGD
-from explainer import PGExplainer, GNNExplainer
 from load_dataset import load_dataset
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 if __name__ == '__main__':
     # dataset = 'amazon_photo'
-    dataset = 'amazon_cs'
+    # dataset = 'amazon_cs'
     # dataset = 'coauthor_phy'
+    dataset = 'coauthor_cs'
     # dataset = 'pubmed'
     # dataset = 'ogbn-arxiv'
 
@@ -109,7 +109,21 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 6. Load pre-trained vanilla model
     # ==================================================================================================
-    tim = '_20-15'
+    # va = GATNodeClassifier(
+    #     feats_size=in_feats,
+    #     hidden_size=args.hid_dim,
+    #     out_size=num_classes,
+    #     n_layers=args.n_layers,
+    #     n_heads=args.n_heads,
+    #     feat_drop=args.feat_drop,
+    #     attn_drop=args.attn_drop
+    # ).to(device)
+    # tim = '_21-22'
+    # va.load_state_dict(torch.load(f'./vanilla_checkpoints/{dataset}{tim}/model_parameters.pth'))
+    #
+    # orig_outputs, orig_graph_repr, orig_att = evaluate_node_level(va, features, adj, label, test_idx)
+
+    tim = '_21-01'
     FGAI.load_state_dict(torch.load(f'./vanilla_checkpoints/{dataset}{tim}/model_parameters.pth'))
 
     orig_outputs, orig_graph_repr, orig_att = evaluate_node_level(FGAI, features, adj, label, test_idx)
