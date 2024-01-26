@@ -89,7 +89,7 @@ class FGAITrainer(object):
         self.early_stopping = args.early_stopping
         self.overlap_loss = loss_type
 
-    def train(self, features, adj, label, idx_split, orig_outputs, orig_graph_repr, orig_att, save_dir):
+    def train(self, features, adj, label, idx_split, orig_outputs, orig_att, save_dir):
         train_idx, valid_idx, test_idx = idx_split
         best_val_loss = float('inf')
         current_patience = 0
@@ -109,7 +109,7 @@ class FGAITrainer(object):
 
             # 2. Similarity of Explanation
             similarity_of_explanation_loss = topK_overlap_loss(FGAI_att, orig_att[:FGAI_att.shape[0]], adj, self.K,
-                                                               'l1')
+                                                               'l1', 'node')
 
             # target_mask = torch.ones(features.shape[0]).bool()
             target_mask = train_idx
@@ -122,7 +122,7 @@ class FGAITrainer(object):
             adj_rho, feats_rho = self.attacker_rho.attack(self.model, adj, features, target_mask, None)
             new_outputs_2, new_graph_repr_2, new_att_2 = self.model(torch.cat((features, feats_rho), dim=0), adj_rho)
             stability_of_explanation_loss = topK_overlap_loss(new_att_2[:FGAI_att.shape[0]], FGAI_att, adj, self.K,
-                                                              'l1')
+                                                              'l1', 'node')
 
             loss = closeness_of_prediction_loss + adversarial_loss * self.lambda_1 + \
                    stability_of_explanation_loss * self.lambda_2 + similarity_of_explanation_loss * self.lambda_3

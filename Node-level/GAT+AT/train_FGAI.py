@@ -13,7 +13,7 @@ from attackers import PGD
 from load_dataset import load_dataset
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-device = 'cpu'
+# device = 'cpu'
 
 if __name__ == '__main__':
     dataset = 'amazon_photo'
@@ -57,7 +57,7 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 4. Prepare data
     # ==================================================================================================
-    _, adj, features, label, train_idx, valid_idx, test_idx, num_classes = load_dataset(args)
+    g, adj, features, label, train_idx, valid_idx, test_idx, num_classes = load_dataset(args)
     in_feats = features.shape[1]
 
     # ==================================================================================================
@@ -100,7 +100,21 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 6. Load pre-trained vanilla model
     # ==================================================================================================
-    tim = '_20-11'
+    # va = GATNodeClassifier(
+    #     feats_size=in_feats,
+    #     hidden_size=args.hid_dim,
+    #     out_size=num_classes,
+    #     n_layers=args.n_layers,
+    #     n_heads=args.n_heads,
+    #     feat_drop=args.feat_drop,
+    #     attn_drop=args.attn_drop
+    # ).to(device)
+    # tim = '_20-20'
+    # va.load_state_dict(torch.load(f'./vanilla_checkpoints/{dataset}{tim}/model_parameters.pth'))
+    #
+    # orig_outputs, orig_graph_repr, orig_att = evaluate_node_level(va, features, adj, label, test_idx)
+
+    tim = '_20-20'
     FGAI.load_state_dict(torch.load(f'./vanilla_checkpoints/{dataset}{tim}/model_parameters.pth'))
 
     orig_outputs, orig_graph_repr, orig_att = evaluate_node_level(FGAI, features, adj, label, test_idx)
@@ -109,7 +123,7 @@ if __name__ == '__main__':
     # 7. Train our FGAI
     # ==================================================================================================
     idx_split = train_idx, valid_idx, test_idx
-    trainer.train(features, adj, label, idx_split, orig_outputs, orig_graph_repr, orig_att, save_dir)
+    trainer.train(features, adj, label, idx_split, orig_outputs, orig_att, save_dir)
 
     FGAI_outputs, FGAI_graph_repr, FGAI_att = evaluate_node_level(FGAI, features, adj, label, test_idx)
 

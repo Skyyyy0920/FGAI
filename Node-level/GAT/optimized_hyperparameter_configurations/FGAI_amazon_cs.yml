@@ -1,5 +1,5 @@
 dataset: amazon_cs
-num_epochs: 800
+num_epochs: 200
 early_stopping: 500
 n_inject_max: 20
 n_edge_max: 20

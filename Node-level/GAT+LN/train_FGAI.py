@@ -109,7 +109,7 @@ if __name__ == '__main__':
     # 7. Train our FGAI
     # ==================================================================================================
     idx_split = train_idx, valid_idx, test_idx
-    trainer.train(features, adj, label, idx_split, orig_outputs, orig_graph_repr, orig_att, save_dir)
+    trainer.train(features, adj, label, idx_split, orig_outputs, orig_att, save_dir)
 
     FGAI_outputs, FGAI_graph_repr, FGAI_att = evaluate_node_level(FGAI, features, adj, label, test_idx)
 

@@ -1,6 +1,6 @@
 dataset: amazon_photo
-num_epochs: 600
-early_stopping: 100
+num_epochs: 400
+early_stopping: 1000
 n_inject_max: 20
 n_edge_max: 20
 epsilon: 0.05
@@ -13,9 +13,9 @@ feat_drop: 0.6
 attn_drop: 0.6
 lr: 0.01
 weight_decay: 0.0005
-lambda_1: 0
-lambda_2: 5000
-lambda_3: 5000
-K: 50
-K_rho: 50
+lambda_1: 2
+lambda_2: 500000
+lambda_3: 500000
+K: 150000
+K_rho: 150000
 save_path: ./FGAI_checkpoints/

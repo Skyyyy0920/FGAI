@@ -14,10 +14,11 @@ from attackers import PGD
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 if __name__ == '__main__':
-    dataset = 'amazon_photo'
+    # dataset = 'amazon_photo'
     # dataset = 'amazon_cs'
     # dataset = 'coauthor_phy'
-    # dataset = 'pubmed'
+    # dataset = 'coauthor_cs'
+    dataset = 'pubmed'
     # dataset = 'ogbn-arxiv'
 
     with open(f"./optimized_hyperparameter_configurations/{dataset}.yml", 'r') as file:
@@ -31,7 +32,7 @@ if __name__ == '__main__':
     logging.info(f"args: {args}")
     logging.info(f"Saving path: {save_dir}")
 
-    _, adj, features, label, train_idx, valid_idx, test_idx, num_classes = load_dataset(args)
+    g, adj, features, label, train_idx, valid_idx, test_idx, num_classes = load_dataset(args)
     in_feats = features.shape[1]
 
     criterion = nn.CrossEntropyLoss()
@@ -85,7 +86,7 @@ if __name__ == '__main__':
     sp.save_npz(os.path.join(save_dir, 'adj_delta.npz'), adj_delta)
     torch.save(feats_delta, os.path.join(save_dir, 'feats_delta.pth'))
 
-    fidelity_pos_list, fidelity_neg_list = compute_fidelity(GAT_LN, adj, features, label, test_idx)
+    fidelity_pos_list, fidelity_neg_list = compute_fidelity(GAT_LN, adj, features, label, test_idx, orig_att)
     logging.info(f"fidelity_pos: {fidelity_pos_list}")
     logging.info(f"fidelity_neg: {fidelity_neg_list}")
     data = pd.DataFrame({'fidelity_pos': fidelity_pos_list, 'fidelity_neg': fidelity_neg_list})

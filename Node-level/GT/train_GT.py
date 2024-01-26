@@ -17,7 +17,8 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 if __name__ == '__main__':
     # dataset = 'amazon_photo'
     # dataset = 'amazon_cs'
-    dataset = 'coauthor_phy'
+    # dataset = 'coauthor_phy'
+    dataset = 'coauthor_cs'
     # dataset = 'pubmed'
     # dataset = 'ogbn-arxiv'
 

@@ -14,10 +14,10 @@ from load_dataset import load_dataset
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 if __name__ == '__main__':
-    # dataset = 'amazon_photo'
+    dataset = 'amazon_photo'
     # dataset = 'amazon_cs'
     # dataset = 'coauthor_phy'
-    dataset = 'coauthor_cs'
+    # dataset = 'coauthor_cs'
     # dataset = 'pubmed'
     # dataset = 'ogbn-arxiv'
 
@@ -64,6 +64,8 @@ if __name__ == '__main__':
 
     torch.save(GAT.state_dict(), os.path.join(save_dir, 'model_parameters.pth'))
 
+    # args.n_inject_max = 1000
+    # args.n_edge_max = 1000
     attacker = PGD(
         epsilon=args.epsilon,
         n_epoch=args.n_epoch_attack,
