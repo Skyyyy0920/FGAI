@@ -109,7 +109,7 @@ class FGAITrainer(object):
 
             # 2. Similarity of Explanation
             similarity_of_explanation_loss = topK_overlap_loss(FGAI_att, orig_att[:FGAI_att.shape[0]], adj, self.K,
-                                                               'l1', 'node')
+                                                               'l1', 'graph')
 
             # target_mask = torch.ones(features.shape[0]).bool()
             target_mask = train_idx
@@ -122,7 +122,7 @@ class FGAITrainer(object):
             adj_rho, feats_rho = self.attacker_rho.attack(self.model, adj, features, target_mask, None)
             new_outputs_2, new_graph_repr_2, new_att_2 = self.model(torch.cat((features, feats_rho), dim=0), adj_rho)
             stability_of_explanation_loss = topK_overlap_loss(new_att_2[:FGAI_att.shape[0]], FGAI_att, adj, self.K,
-                                                              'l1', 'node')
+                                                              'l1', 'graph')
 
             loss = closeness_of_prediction_loss + adversarial_loss * self.lambda_1 + \
                    stability_of_explanation_loss * self.lambda_2 + similarity_of_explanation_loss * self.lambda_3

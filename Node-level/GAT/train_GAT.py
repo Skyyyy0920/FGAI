@@ -83,7 +83,7 @@ if __name__ == '__main__':
         new_outputs[:orig_outputs.shape[0]], new_graph_repr[:orig_graph_repr.shape[0]], new_att[:orig_att.shape[0]]
     pred = torch.argmax(new_outputs[test_idx], dim=1)
     accuracy = accuracy_score(label[test_idx].cpu(), pred.cpu())
-    logging.info(f"Accuracy after attack: {accuracy:.4f}")
+    logging.info(f"Accuracy after Injection Attack: {accuracy:.4f}")
 
     TVD_score = TVD(orig_outputs, new_outputs) / len(orig_outputs)
     JSD_score = JSD(orig_att, new_att) / len(orig_att)
@@ -92,6 +92,33 @@ if __name__ == '__main__':
 
     sp.save_npz(os.path.join(save_dir, 'adj_delta.npz'), adj_delta)
     torch.save(feats_delta, os.path.join(save_dir, 'feats_delta.pth'))
+
+    attacker_ = PGD(
+        epsilon=0.00001,
+        n_epoch=args.n_epoch_attack,
+        n_inject_max=args.n_inject_max,
+        n_edge_max=args.n_edge_max,
+        feat_lim_min=-0.001,
+        feat_lim_max=0.001,
+        device=device,
+        mode='Modification Attack'
+    )
+    GAT.eval()
+    adj_delta, feats_delta = attacker_.attack(GAT, adj, features, test_idx, None)
+    new_outputs, new_graph_repr, new_att = GAT(feats_delta, adj_delta)
+    new_outputs, new_graph_repr, new_att = \
+        new_outputs[:orig_outputs.shape[0]], new_graph_repr[:orig_graph_repr.shape[0]], new_att[:orig_att.shape[0]]
+    pred = torch.argmax(new_outputs[test_idx], dim=1)
+    accuracy = accuracy_score(label[test_idx].cpu(), pred.cpu())
+    logging.info(f"Accuracy after Modification Attack: {accuracy:.4f}")
+
+    TVD_score = TVD(orig_outputs, new_outputs) / len(orig_outputs)
+    JSD_score = JSD(orig_att, new_att) / len(orig_att)
+    logging.info(f"JSD: {JSD_score}")
+    logging.info(f"TVD: {TVD_score}")
+
+    sp.save_npz(os.path.join(save_dir, 'adj_delta_.npz'), adj_delta)
+    torch.save(feats_delta, os.path.join(save_dir, 'feats_delta_.pth'))
 
     fidelity_pos_list, fidelity_neg_list = compute_fidelity(GAT, adj, features, label, test_idx, orig_att)
     logging.info(f"fidelity_pos: {fidelity_pos_list}")

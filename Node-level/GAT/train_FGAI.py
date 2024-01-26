@@ -109,21 +109,7 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 6. Load pre-trained vanilla model
     # ==================================================================================================
-    # va = GATNodeClassifier(
-    #     feats_size=in_feats,
-    #     hidden_size=args.hid_dim,
-    #     out_size=num_classes,
-    #     n_layers=args.n_layers,
-    #     n_heads=args.n_heads,
-    #     feat_drop=args.feat_drop,
-    #     attn_drop=args.attn_drop
-    # ).to(device)
-    # tim = '_21-22'
-    # va.load_state_dict(torch.load(f'./vanilla_checkpoints/{dataset}{tim}/model_parameters.pth'))
-    #
-    # orig_outputs, orig_graph_repr, orig_att = evaluate_node_level(va, features, adj, label, test_idx)
-
-    tim = '_11-52'
+    tim = '_21-48'
     FGAI.load_state_dict(torch.load(f'./vanilla_checkpoints/{dataset}{tim}/model_parameters.pth'))
 
     orig_outputs, orig_graph_repr, orig_att = evaluate_node_level(FGAI, features, adj, label, test_idx)
@@ -152,7 +138,22 @@ if __name__ == '__main__':
     new_outputs, new_att = new_outputs[:FGAI_outputs.shape[0]], new_att[:FGAI_att.shape[0]]
     pred = torch.argmax(new_outputs[test_idx], dim=1)
     accuracy = accuracy_score(label[test_idx].cpu(), pred.cpu())
-    logging.info(f"Accuracy after attack: {accuracy:.4f}")
+    logging.info(f"Accuracy after Injection Attack: {accuracy:.4f}")
+
+    TVD_score = TVD(orig_outputs, new_outputs) / len(orig_outputs)
+    JSD_score = JSD(FGAI_att, new_att) / len(new_att)
+    logging.info(f"JSD: {JSD_score}")
+    logging.info(f"TVD: {TVD_score}")
+
+    adj_perturbed = sp.load_npz(f'./vanilla_checkpoints/{args.dataset}{tim}/adj_delta_.npz')
+    feats_perturbed = torch.load(f'./vanilla_checkpoints/{args.dataset}{tim}/feats_delta_.pth').to(device)
+
+    FGAI.eval()
+    new_outputs, _, new_att = FGAI(feats_perturbed, adj_perturbed)
+    new_outputs, new_att = new_outputs[:FGAI_outputs.shape[0]], new_att[:FGAI_att.shape[0]]
+    pred = torch.argmax(new_outputs[test_idx], dim=1)
+    accuracy = accuracy_score(label[test_idx].cpu(), pred.cpu())
+    logging.info(f"Accuracy after Modification Attack: {accuracy:.4f}")
 
     TVD_score = TVD(orig_outputs, new_outputs) / len(orig_outputs)
     JSD_score = JSD(FGAI_att, new_att) / len(new_att)
