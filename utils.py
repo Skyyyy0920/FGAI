@@ -92,7 +92,7 @@ def JSD(a, b):
 
 
 def topK_overlap_loss(new_att, old_att, adj, K=200000, metric='l1', mode='graph'):
-    if mode == 'graph':
+    if mode == 'graph':  # graph-level top-k overlap loss
         if len(new_att.shape) == 2:
             new_att = new_att.transpose(0, 1)
             old_att = old_att.transpose(0, 1)

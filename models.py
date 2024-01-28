@@ -2,7 +2,6 @@ import dgl
 import time
 import numpy as np
 import scipy.sparse as sp
-from tqdm import tqdm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -14,7 +13,6 @@ from dgl.ops import edge_softmax
 from dgl.utils import expand_as_pair
 from dgl.nn.pytorch.utils import Identity
 import dgl.sparse as dglsp
-from ogb.graphproppred.mol_encoder import AtomEncoder
 from utils import k_shell_algorithm, feature_normalize
 import torch.optim as optim
 from deeprobust.graph.utils import accuracy

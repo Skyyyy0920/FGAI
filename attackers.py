@@ -5,7 +5,7 @@ import scipy.sparse as sp
 import torch
 import torch.nn.functional as F
 
-from grb.attack.base import InjectionAttack, EarlyStop
+from grb.attack.base import InjectionAttack
 from grb.evaluator import metric
 from grb.utils import utils
 

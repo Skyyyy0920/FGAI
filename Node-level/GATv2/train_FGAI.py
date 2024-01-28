@@ -16,10 +16,10 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 # device = 'cpu'
 
 if __name__ == '__main__':
-    # dataset = 'amazon_photo'
+    dataset = 'amazon_photo'
     # dataset = 'amazon_cs'
     # dataset = 'coauthor_phy'
-    dataset = 'coauthor_cs'
+    # dataset = 'coauthor_cs'
     # dataset = 'pubmed'
     # dataset = 'ogbn-arxiv'
 
@@ -110,7 +110,7 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 6. Load pre-trained vanilla model
     # ==================================================================================================
-    tim = '_22-17'
+    tim = '_16-37'
     FGAI.load_state_dict(torch.load(f'./vanilla_checkpoints/{dataset}{tim}/model_parameters.pth'))
 
     orig_outputs, orig_graph_repr, orig_att = evaluate_node_level(FGAI, features, adj, label, test_idx)

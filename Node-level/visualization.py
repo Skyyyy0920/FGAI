@@ -8,10 +8,11 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 import matplotlib.gridspec as gridspec
 
-# dataset = 'amazon_photo'
+dataset = 'amazon_photo'
 # dataset = 'amazon_cs'
 # dataset = 'coauthor_phy'
-dataset = 'pubmed'
+# dataset = 'coauthor_cs'
+# dataset = 'pubmed'
 # dataset = 'ogbn-arxiv'
 
 exp = 'GAT'

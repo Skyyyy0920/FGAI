@@ -1,6 +1,5 @@
 import dgl
 import torch
-import logging
 import scipy.sparse as sp
 from dgl.data import *
 from ogb.nodeproppred import DglNodePropPredDataset

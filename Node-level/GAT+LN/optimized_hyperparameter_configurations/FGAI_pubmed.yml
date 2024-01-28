@@ -13,9 +13,9 @@ feat_drop: 0.6
 attn_drop: 0.6
 lr: 0.01
 weight_decay: 0.0005
-lambda_1: 1
-lambda_2: 10000
-lambda_3: 10000
-K: 20
-K_rho: 20
+lambda_1: 2
+lambda_2: 200000
+lambda_3: 200000
+K: 40000
+K_rho: 40000
 save_path: ./FGAI_checkpoints/

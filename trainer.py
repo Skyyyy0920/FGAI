@@ -57,7 +57,6 @@ class AdvTrainer(object):
             outputs, graph_repr, att = outputs[:feats.shape[0]], graph_repr[:feats.shape[0]], att[:feats.shape[0]]
             loss = self.criterion(outputs[train_idx], label[train_idx])
 
-            # Backpropagation
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()

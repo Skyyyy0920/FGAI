@@ -1165,8 +1165,7 @@ class HeteroGNNExplainer(nn.Module):
         self.model = self.model.to(graph.device)
         self.model.eval()
 
-        # Extract node-centered k-hop subgraph and
-        # its associated node and edge features.
+        # Extract node-centered k-hop subgraph and its associated node and edge features.
         sg, inverse_indices = khop_in_subgraph(
             graph, {ntype: node_id}, self.num_hops
         )
