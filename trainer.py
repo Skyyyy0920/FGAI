@@ -51,11 +51,14 @@ class AdvTrainer(object):
         for epoch in range(self.num_epochs):
             self.model.train()
 
+            outputs, graph_repr, att = self.model(feats, adj)
+            loss = self.criterion(outputs[train_idx], label[train_idx])
+
             target_mask = torch.ones(feats.shape[0]).bool()
             adj_delta, feats_delta = self.attacker.attack(self.model, adj, feats, target_mask, None)
             outputs, graph_repr, att = self.model(torch.cat((feats, feats_delta), dim=0), adj_delta)
             outputs, graph_repr, att = outputs[:feats.shape[0]], graph_repr[:feats.shape[0]], att[:feats.shape[0]]
-            loss = self.criterion(outputs[train_idx], label[train_idx])
+            loss += self.criterion(outputs[train_idx], label[train_idx])
 
             self.optimizer.zero_grad()
             loss.backward()
@@ -70,7 +73,6 @@ class AdvTrainer(object):
 
             logging.info(f'Epoch [{epoch + 1}/{self.num_epochs}] | Train Loss: {loss.item():.4f} | '
                          f'Val loss: {val_loss} | Val Accuracy: {val_accuracy:.4f}')
-            logging.info(f'Loss item: {loss}.')
 
 
 class FGAITrainer(object):

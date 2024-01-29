@@ -186,7 +186,7 @@ class GATNodeClassifier(nn.Module):
 
 
 class GATv2NodeClassifier(nn.Module):
-    def __init__(self, feats_size, hidden_size, out_size, n_layers, n_heads, feat_drop, attn_drop):
+    def __init__(self, feats_size, hidden_size, out_size, n_layers, n_heads, feat_drop, attn_drop, LayerNorm=False):
         super(GATv2NodeClassifier, self).__init__()
         self.layers = nn.ModuleList()
         self.layers.append(
@@ -202,8 +202,11 @@ class GATv2NodeClassifier(nn.Module):
         self.out_layer = GATv2Conv(hidden_size * n_heads[-1], out_size, 1, feat_drop, attn_drop, activation=F.elu,
                                    allow_zero_in_degree=True)
         self.dropout = nn.Dropout(0.6)
+        self.LayerNorm = LayerNorm
 
     def forward(self, x, adj):
+        if self.LayerNorm:
+            x = feature_normalize(x)
         g = dgl.from_scipy(adj).to(x.device)
         g.ndata['features'] = x
 
@@ -557,7 +560,7 @@ class GTLayer(nn.Module):
 
 
 class GTNodeClassifier(nn.Module):
-    def __init__(self, feats_size, out_size, hidden_size=80, pos_enc_size=2, n_layers=8, n_heads=8):
+    def __init__(self, feats_size, out_size, hidden_size=80, pos_enc_size=2, n_layers=8, n_heads=8, LayerNorm=False):
         super(GTNodeClassifier, self).__init__()
         self.atom_encoder = nn.Linear(feats_size, hidden_size)
         self.pos_linear = nn.Linear(pos_enc_size, hidden_size)
@@ -573,12 +576,15 @@ class GTNodeClassifier(nn.Module):
         )
         self.pos_enc = None
         self.pos_enc_ = None
+        self.LayerNorm = LayerNorm
 
     def forward(self, X, adj):
         if X.shape[0] == self.pos_enc.shape[0]:
             pos_enc = self.pos_enc
         else:
             pos_enc = self.pos_enc_
+        if self.LayerNorm:
+            X = feature_normalize(X)
         src, dst = adj.nonzero()
         indices = torch.stack([torch.tensor(src).to(torch.int64), torch.tensor(dst).to(torch.int64)]).to(X.device)
         N = adj.shape[0]

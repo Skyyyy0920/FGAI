@@ -83,4 +83,12 @@ def load_dataset(args):
     feats = feats.to(args.device)
     label = label.to(args.device)
 
+    print(f"Nodes: {feats.shape[0]}")
+    print(f"Edges: {g.number_of_edges()}")
+    print(f"Node feature size: {feats.shape[1]}")
+    print(f"Classes: {num_classes}")
+    print(f"Training Nodes: {len(train_idx)}")
+    print(f"Validation Nodes: {len(valid_idx)}")
+    print(f"Test Nodes: {len(test_idx)}")
+
     return g, adj, feats, label, train_idx, valid_idx, test_idx, num_classes

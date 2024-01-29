@@ -15,10 +15,10 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 if __name__ == '__main__':
     # dataset = 'amazon_photo'
-    # dataset = 'amazon_cs'
+    dataset = 'amazon_cs'
     # dataset = 'coauthor_phy'
     # dataset = 'coauthor_cs'
-    dataset = 'pubmed'
+    # dataset = 'pubmed'
     # dataset = 'ogbn-arxiv'
 
     with open(f"./optimized_hyperparameter_configurations/{dataset}.yml", 'r') as file:
@@ -26,7 +26,7 @@ if __name__ == '__main__':
     args = argparse.Namespace(**args)
     args.device = device
     logging_time = time.strftime('%H-%M', time.localtime())
-    save_dir = os.path.join("vanilla_checkpoints", f"{dataset}_{logging_time}")
+    save_dir = os.path.join("LN_checkpoints", f"{dataset}_{logging_time}")
     logging_config(save_dir)
     logging.info(f"Using device: {device}")
     logging.info(f"args: {args}")
@@ -36,17 +36,19 @@ if __name__ == '__main__':
     in_feats = features.shape[1]
 
     criterion = nn.CrossEntropyLoss()
-    GAT_LN = GATNodeClassifier(feats_size=in_feats,
-                               hidden_size=args.hid_dim,
-                               out_size=num_classes,
-                               n_layers=args.n_layers,
-                               n_heads=args.n_heads,
-                               feat_drop=args.feat_drop,
-                               attn_drop=args.attn_drop,
-                               LayerNorm=True).to(device)
-    optimizer = optim.Adam(GAT_LN.parameters(),
-                           lr=args.lr,
-                           weight_decay=args.weight_decay)
+    GAT_LN = GATNodeClassifier(
+        feats_size=in_feats,
+        hidden_size=args.hid_dim,
+        out_size=num_classes,
+        n_layers=args.n_layers,
+        n_heads=args.n_heads,
+        feat_drop=args.feat_drop,
+        attn_drop=args.attn_drop,
+        LayerNorm=True).to(device)
+    optimizer = optim.Adam(
+        GAT_LN.parameters(),
+        lr=args.lr,
+        weight_decay=args.weight_decay)
 
     total_params = sum(p.numel() for p in GAT_LN.parameters())
     logging.info(f"Total parameters: {total_params}")
@@ -61,13 +63,14 @@ if __name__ == '__main__':
 
     torch.save(GAT_LN.state_dict(), os.path.join(save_dir, 'model_parameters.pth'))
 
-    attacker = PGD(epsilon=args.epsilon,
-                   n_epoch=args.n_epoch_attack,
-                   n_inject_max=args.n_inject_max,
-                   n_edge_max=args.n_edge_max,
-                   feat_lim_min=-1,
-                   feat_lim_max=1,
-                   device=device)
+    attacker = PGD(
+        epsilon=args.epsilon,
+        n_epoch=args.n_epoch_attack,
+        n_inject_max=args.n_inject_max,
+        n_edge_max=args.n_edge_max,
+        feat_lim_min=-1,
+        feat_lim_max=1,
+        device=device)
 
     GAT_LN.eval()
     adj_delta, feats_delta = attacker.attack(GAT_LN, adj, features, test_idx, None)
