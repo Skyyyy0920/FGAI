@@ -560,12 +560,12 @@ class GTLayer(nn.Module):
 
 
 class GTNodeClassifier(nn.Module):
-    def __init__(self, feats_size, out_size, hidden_size=80, pos_enc_size=2, n_layers=8, n_heads=8, LayerNorm=False):
+    def __init__(self, feats_size, out_size, hidden_size=80, pos_enc_size=2, n_layers=1, n_heads=[8], LayerNorm=False):
         super(GTNodeClassifier, self).__init__()
         self.atom_encoder = nn.Linear(feats_size, hidden_size)
         self.pos_linear = nn.Linear(pos_enc_size, hidden_size)
         self.layers = nn.ModuleList(
-            [GTLayer(hidden_size, n_heads) for _ in range(n_layers)]
+            [GTLayer(hidden_size, n_heads[i]) for i in range(n_layers)]
         )
         self.predictor = nn.Sequential(
             nn.Linear(hidden_size, hidden_size // 2),
@@ -595,7 +595,7 @@ class GTNodeClassifier(nn.Module):
         graph_representation = h.mean(dim=0)
         logits = self.predictor(h)
 
-        return logits, graph_representation, att.val
+        return logits, graph_representation, att.val.squeeze()
 
 
 class ModelForExplain(nn.Module):

@@ -16,12 +16,12 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 # device = 'cpu'
 
 if __name__ == '__main__':
-    dataset = 'amazon_photo'
+    # dataset = 'amazon_photo'
     # dataset = 'amazon_cs'
     # dataset = 'coauthor_phy'
     # dataset = 'coauthor_cs'
     # dataset = 'pubmed'
-    # dataset = 'ogbn-arxiv'
+    dataset = 'ogbn-arxiv'
 
     # ==================================================================================================
     # 1. Get experiment args and seed
@@ -110,7 +110,7 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 6. Load pre-trained vanilla model
     # ==================================================================================================
-    tim = '_16-37'
+    tim = '_23-36'
     FGAI.load_state_dict(torch.load(f'./vanilla_checkpoints/{dataset}{tim}/model_parameters.pth'))
 
     orig_outputs, orig_graph_repr, orig_att = evaluate_node_level(FGAI, features, adj, label, test_idx)
@@ -131,11 +131,24 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 8. Evaluation
     # ==================================================================================================
-    adj_perturbed = sp.load_npz(f'./vanilla_checkpoints/{args.dataset}{tim}/adj_delta.npz')
-    feats_perturbed = torch.load(f'./vanilla_checkpoints/{args.dataset}{tim}/feats_delta.pth').to(device)
+    attacker = PGD(
+        epsilon=args.epsilon,
+        n_epoch=args.n_epoch_attack,
+        n_inject_max=args.n_inject_max,
+        n_edge_max=args.n_edge_max,
+        feat_lim_min=-1,
+        feat_lim_max=1,
+        device=device,
+        dataset=dataset
+    )
 
     FGAI.eval()
-    new_outputs, _, new_att = FGAI(torch.cat((features, feats_perturbed), dim=0), adj_perturbed)
+    adj_perturbed, feats_perturbed = attacker.attack(FGAI, adj, features, test_idx, None)
+    sp.save_npz(os.path.join(save_dir, 'adj_delta.npz'), adj_perturbed)
+    torch.save(feats_perturbed, os.path.join(save_dir, 'feats_delta.pth'))
+
+    feats_ = torch.cat((features, feats_perturbed), dim=0)
+    new_outputs, _, new_att = FGAI(feats_, adj_perturbed)
     new_outputs, new_att = new_outputs[:FGAI_outputs.shape[0]], new_att[:FGAI_att.shape[0]]
     pred = torch.argmax(new_outputs[test_idx], dim=1)
     accuracy = accuracy_score(label[test_idx].cpu(), pred.cpu())
@@ -146,8 +159,15 @@ if __name__ == '__main__':
     logging.info(f"JSD: {JSD_score}")
     logging.info(f"TVD: {TVD_score}")
 
-    fidelity_pos_list, fidelity_neg_list = compute_fidelity(FGAI, adj, features, label, test_idx, FGAI_att)
-    logging.info(f"fidelity_pos: {fidelity_pos_list}")
-    logging.info(f"fidelity_neg: {fidelity_neg_list}")
-    data = pd.DataFrame({'fidelity_pos': fidelity_pos_list, 'fidelity_neg': fidelity_neg_list})
-    data.to_csv(os.path.join(save_dir, 'fidelity_data.txt'), sep=',', index=False)
+    f_pos_list, f_neg_list = compute_fidelity(FGAI, adj, features, label, test_idx, FGAI_att)
+    logging.info(f"fidelity_pos: {f_pos_list}")
+    logging.info(f"fidelity_neg: {f_neg_list}")
+    data = pd.DataFrame({'fidelity_pos': f_pos_list, 'fidelity_neg': f_neg_list})
+    data.to_csv(os.path.join(save_dir, 'GATv2+FGAI.txt'), sep=',', index=False)
+
+    f_pos_list, f_neg_list = compute_fidelity_attacked(FGAI, adj, features, adj_perturbed, feats_, label, test_idx,
+                                                       new_att)
+    logging.info(f"fidelity_pos_after_attack: {f_pos_list}")
+    logging.info(f"fidelity_neg_after_attack: {f_neg_list}")
+    data = pd.DataFrame({'fidelity_pos': f_pos_list, 'fidelity_neg': f_neg_list})
+    data.to_csv(os.path.join(save_dir, 'GATv2+FGAI_after_attack.txt'), sep=',', index=False)

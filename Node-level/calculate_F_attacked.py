@@ -11,12 +11,13 @@ from scipy.sparse import csr_matrix
 from utils import evaluate_node_level
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = 'cpu'
 
 if __name__ == '__main__':
-    dataset = 'amazon_photo'
+    # dataset = 'amazon_photo'
     # dataset = 'amazon_cs'
-    # dataset = 'pubmed'
-    # dataset = 'coauthor_phy'
+    # dataset = 'coauthor_cs'
+    dataset = 'coauthor_phy'
     # dataset ='ogbn-arxiv'
 
     with open(f"./GAT/optimized_hyperparameter_configurations/FGAI_{dataset}.yml", 'r') as file:
@@ -41,6 +42,14 @@ if __name__ == '__main__':
         n_heads=args.n_heads,
         feat_drop=args.feat_drop,
         attn_drop=args.attn_drop).to(device)
+    GAT_LN = GATNodeClassifier(
+        feats_size=in_feats,
+        hidden_size=args.hid_dim,
+        out_size=num_classes,
+        n_layers=args.n_layers,
+        n_heads=args.n_heads,
+        feat_drop=args.feat_drop,
+        attn_drop=args.attn_drop, LayerNorm=True).to(device)
     GAT_AT = GATNodeClassifier(
         feats_size=in_feats,
         hidden_size=args.hid_dim,
@@ -79,6 +88,15 @@ if __name__ == '__main__':
         feat_drop=args.feat_drop,
         attn_drop=args.attn_drop
     ).to(device)
+    GATv2_LN = GATv2NodeClassifier(
+        feats_size=in_feats,
+        hidden_size=args.hid_dim,
+        out_size=num_classes,
+        n_layers=args.n_layers,
+        n_heads=args.n_heads,
+        feat_drop=args.feat_drop,
+        attn_drop=args.attn_drop, LayerNorm=True
+    ).to(device)
     GATv2_FGAI = GATv2NodeClassifier(
         feats_size=in_feats,
         hidden_size=args.hid_dim,
@@ -102,6 +120,14 @@ if __name__ == '__main__':
         n_layers=args.n_layers,
         n_heads=args.n_heads
     ).to(device)
+    GT_LN = GTNodeClassifier(
+        feats_size=features.shape[1],
+        hidden_size=args.hid_dim,
+        out_size=num_classes,
+        pos_enc_size=pos_enc_size,
+        n_layers=args.n_layers,
+        n_heads=args.n_heads, LayerNorm=True
+    ).to(device)
     GT_AT = GTNodeClassifier(
         feats_size=features.shape[1],
         hidden_size=args.hid_dim,
@@ -122,30 +148,74 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 6. Load pre-trained vanilla model
     # ==================================================================================================
-    tim1 = '11-52'
-    tim_AT = '11-47'
-    tim_FGAI = '01-23_12-01'
+    # tim1 = '11-52'
+    # tim_AT = '11-47'
+    # tim_LN = '11-28'
+    # tim_FGAI = '01-23_12-01'
+    # tim1 = '13-55'
+    # tim_AT = '11-55'
+    # tim_LN = '19-36'
+    # tim_FGAI = '01-24_21-27'
+    # tim1 = '21-09'
+    # tim_AT = '12-34'
+    # tim_LN = '21-02'
+    # tim_FGAI = '01-23_21-52'
+    tim1 = '14-02'
+    tim_AT = '13-07'
+    tim_LN = '20-52'
+    tim_FGAI = '01-25_08-41'
     GAT.load_state_dict(torch.load(f'./GAT/vanilla_checkpoints/{dataset}_{tim1}/model_parameters.pth'))
     GAT_AT.load_state_dict(torch.load(f'./GAT/AT_checkpoints/{dataset}_{tim_AT}/model_parameters.pth'))
+    GAT_LN.load_state_dict(torch.load(f'./GAT/LN_checkpoints/{dataset}_{tim_LN}/model_parameters.pth'))
     GAT_FGAI.load_state_dict(torch.load(f'./GAT/FGAI_checkpoints/{dataset}_{tim_FGAI}/FGAI_parameters.pth'))
 
-    tim2 = '16-37'
-    tim_AT = '19-43'
-    tim_FGAI = '01-23_18-21'
+    # tim2 = '16-37'
+    # tim_AT = '19-43'
+    # tim_LN = '12-31'
+    # tim_FGAI = '01-23_18-21'
+    # tim2 = '22-29'
+    # tim_AT = '19-54'
+    # tim_LN = '20-11'
+    # tim_FGAI = '01-25_19-44'
+    # tim2 = '22-21'
+    # tim_AT = '20-14'
+    # tim_LN = '20-26'
+    # tim_FGAI = '01-26_19-10'
+    tim2 = '22-35'
+    tim_AT = '17-09'
+    tim_LN = '20-39'
+    tim_FGAI = '01-26_10-41'
     GATv2.load_state_dict(torch.load(f'./GATv2/vanilla_checkpoints/{dataset}_{tim2}/model_parameters.pth'))
     GATv2_AT.load_state_dict(torch.load(f'./GATv2/AT_checkpoints/{dataset}_{tim_AT}/model_parameters.pth'))
+    GATv2_LN.load_state_dict(torch.load(f'./GATv2/LN_checkpoints/{dataset}_{tim_LN}/model_parameters.pth'))
     GATv2_FGAI.load_state_dict(torch.load(f'./GATv2/FGAI_checkpoints/{dataset}_{tim_FGAI}/FGAI_parameters.pth'))
 
-    tim3 = '19-35'
-    tim_AT = '20-37'
-    tim_FGAI = '01-26_22-58'
+    # tim3 = '19-35'
+    # tim_AT = '20-37'
+    # tim_LN = '14-54'
+    # tim_FGAI = '01-26_22-58'
+    # tim3 = '19-40'
+    # tim_AT = '20-59'
+    # tim_LN = '15-16'
+    # tim_FGAI = '01-26_23-25'
+    # tim3 = '23-40'
+    # tim_AT = '21-16'
+    # tim_LN = '15-30'
+    # tim_FGAI = '01-27_00-15'
+    tim3 = '12-26'
+    tim_AT = '12-42'
+    tim_LN = '12-36'
+    tim_FGAI = '01-30_13-18'
     GT.load_state_dict(torch.load(f'./GT/vanilla_checkpoints/{dataset}_{tim3}/model_parameters.pth'))
     GT_AT.load_state_dict(torch.load(f'./GT/AT_checkpoints/{dataset}_{tim_AT}/model_parameters.pth'))
+    GT_LN.load_state_dict(torch.load(f'./GT/LN_checkpoints/{dataset}_{tim_LN}/model_parameters.pth'))
     GT_FGAI.load_state_dict(torch.load(f'./GT/FGAI_checkpoints/{dataset}_{tim_FGAI}/FGAI_parameters.pth'))
     GT.pos_enc = torch.load(f'./GT/{dataset}_pos_enc.pth').to(device)
     GT.pos_enc_ = torch.load(f'./GT/{dataset}_pos_enc_perturbed.pth').to(device)
     GT_AT.pos_enc = torch.load(f'./GT/{dataset}_pos_enc.pth').to(device)
     GT_AT.pos_enc_ = torch.load(f'./GT/{dataset}_pos_enc_perturbed.pth').to(device)
+    GT_LN.pos_enc = torch.load(f'./GT/{dataset}_pos_enc.pth').to(device)
+    GT_LN.pos_enc_ = torch.load(f'./GT/{dataset}_pos_enc_perturbed.pth').to(device)
     GT_FGAI.pos_enc = torch.load(f'./GT/{dataset}_pos_enc.pth').to(device)
     GT_FGAI.pos_enc_ = torch.load(f'./GT/{dataset}_pos_enc_perturbed.pth').to(device)
 
@@ -209,6 +279,13 @@ if __name__ == '__main__':
     data = pd.DataFrame({'fidelity_pos': f_pos_list, 'fidelity_neg': f_neg_list})
     data.to_csv(os.path.join(f'./F_after_attack/{dataset_}', f'GAT.txt'), sep=',', index=False)
 
+    print("GAT+LN")
+    f_pos_list, f_neg_list = compute_fidelity(GAT_LN, adj, features, adj_, feats_, label, test_idx)
+    print(f"fidelity_pos: {f_pos_list}")
+    print(f"fidelity_neg: {f_neg_list}")
+    data = pd.DataFrame({'fidelity_pos': f_pos_list, 'fidelity_neg': f_neg_list})
+    data.to_csv(os.path.join(f'./F_after_attack/{dataset_}', f'GAT+LN.txt'), sep=',', index=False)
+
     print("GAT+AT")
     f_pos_list, f_neg_list = compute_fidelity(GAT_AT, adj, features, adj_, feats_, label, test_idx)
     print(f"fidelity_pos: {f_pos_list}")
@@ -234,6 +311,13 @@ if __name__ == '__main__':
     data = pd.DataFrame({'fidelity_pos': f_pos_list, 'fidelity_neg': f_neg_list})
     data.to_csv(os.path.join(f'./F_after_attack/{dataset_}', f'GATv2.txt'), sep=',', index=False)
 
+    print("GATv2+LN")
+    f_pos_list, f_neg_list = compute_fidelity(GATv2_LN, adj, features, adj_, feats_, label, test_idx)
+    print(f"fidelity_pos: {f_pos_list}")
+    print(f"fidelity_neg: {f_neg_list}")
+    data = pd.DataFrame({'fidelity_pos': f_pos_list, 'fidelity_neg': f_neg_list})
+    data.to_csv(os.path.join(f'./F_after_attack/{dataset_}', f'GATv2+LN.txt'), sep=',', index=False)
+
     print("GATv2+AT")
     f_pos_list, f_neg_list = compute_fidelity(GATv2_AT, adj, features, adj_, feats_, label, test_idx)
     print(f"fidelity_pos: {f_pos_list}")
@@ -258,6 +342,13 @@ if __name__ == '__main__':
     print(f"fidelity_neg: {f_neg_list}")
     data = pd.DataFrame({'fidelity_pos': f_pos_list, 'fidelity_neg': f_neg_list})
     data.to_csv(os.path.join(f'./F_after_attack/{dataset_}', f'GT.txt'), sep=',', index=False)
+
+    print("GT+LN")
+    f_pos_list, f_neg_list = compute_fidelity(GT_LN, adj, features, adj_, feats_, label, test_idx)
+    print(f"fidelity_pos: {f_pos_list}")
+    print(f"fidelity_neg: {f_neg_list}")
+    data = pd.DataFrame({'fidelity_pos': f_pos_list, 'fidelity_neg': f_neg_list})
+    data.to_csv(os.path.join(f'./F_after_attack/{dataset_}', f'GT+LN.txt'), sep=',', index=False)
 
     print("GT+AT")
     f_pos_list, f_neg_list = compute_fidelity(GT_AT, adj, features, adj_, feats_, label, test_idx)

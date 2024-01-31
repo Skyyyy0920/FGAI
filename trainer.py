@@ -58,7 +58,7 @@ class AdvTrainer(object):
             adj_delta, feats_delta = self.attacker.attack(self.model, adj, feats, target_mask, None)
             outputs, graph_repr, att = self.model(torch.cat((feats, feats_delta), dim=0), adj_delta)
             outputs, graph_repr, att = outputs[:feats.shape[0]], graph_repr[:feats.shape[0]], att[:feats.shape[0]]
-            loss += self.criterion(outputs[train_idx], label[train_idx])
+            loss += self.criterion(outputs[train_idx], label[train_idx]) * 0.01
 
             self.optimizer.zero_grad()
             loss.backward()

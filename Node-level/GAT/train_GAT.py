@@ -78,7 +78,11 @@ if __name__ == '__main__':
 
     GAT.eval()
     adj_delta, feats_delta = attacker.attack(GAT, adj, features, test_idx, None)
-    new_outputs, new_graph_repr, new_att = GAT(torch.cat((features, feats_delta), dim=0), adj_delta)
+    sp.save_npz(os.path.join(save_dir, 'adj_delta.npz'), adj_delta)
+    torch.save(feats_delta, os.path.join(save_dir, 'feats_delta.pth'))
+
+    feats_ = torch.cat((features, feats_delta), dim=0)
+    new_outputs, new_graph_repr, new_att = GAT(feats_, adj_delta)
     new_outputs, new_graph_repr, new_att = \
         new_outputs[:orig_outputs.shape[0]], new_graph_repr[:orig_graph_repr.shape[0]], new_att[:orig_att.shape[0]]
     pred = torch.argmax(new_outputs[test_idx], dim=1)
@@ -90,8 +94,17 @@ if __name__ == '__main__':
     logging.info(f"JSD: {JSD_score}")
     logging.info(f"TVD: {TVD_score}")
 
-    sp.save_npz(os.path.join(save_dir, 'adj_delta.npz'), adj_delta)
-    torch.save(feats_delta, os.path.join(save_dir, 'feats_delta.pth'))
+    f_pos_list, f_neg_list = compute_fidelity(GAT, adj, features, label, test_idx, orig_att)
+    logging.info(f"fidelity_pos: {f_pos_list}")
+    logging.info(f"fidelity_neg: {f_neg_list}")
+    data = pd.DataFrame({'fidelity_pos': f_pos_list, 'fidelity_neg': f_neg_list})
+    data.to_csv(os.path.join(save_dir, 'GAT.txt'), sep=',', index=False)
+
+    f_pos_list, f_neg_list = compute_fidelity_attacked(GAT, adj, features, adj_delta, feats_, label, test_idx, new_att)
+    logging.info(f"fidelity_pos_after_attack: {f_pos_list}")
+    logging.info(f"fidelity_neg_after_attack: {f_neg_list}")
+    data = pd.DataFrame({'fidelity_pos': f_pos_list, 'fidelity_neg': f_neg_list})
+    data.to_csv(os.path.join(save_dir, 'GAT_after_attack.txt'), sep=',', index=False)
 
     attacker_ = PGD(
         epsilon=0.00001,
@@ -105,6 +118,9 @@ if __name__ == '__main__':
     )
     GAT.eval()
     adj_delta, feats_delta = attacker_.attack(GAT, adj, features, test_idx, None)
+    sp.save_npz(os.path.join(save_dir, 'adj_delta_.npz'), adj_delta)
+    torch.save(feats_delta, os.path.join(save_dir, 'feats_delta_.pth'))
+
     new_outputs, new_graph_repr, new_att = GAT(feats_delta, adj_delta)
     new_outputs, new_graph_repr, new_att = \
         new_outputs[:orig_outputs.shape[0]], new_graph_repr[:orig_graph_repr.shape[0]], new_att[:orig_att.shape[0]]
@@ -117,11 +133,15 @@ if __name__ == '__main__':
     logging.info(f"JSD: {JSD_score}")
     logging.info(f"TVD: {TVD_score}")
 
-    sp.save_npz(os.path.join(save_dir, 'adj_delta_.npz'), adj_delta)
-    torch.save(feats_delta, os.path.join(save_dir, 'feats_delta_.pth'))
+    f_pos_list, f_neg_list = compute_fidelity(GAT, adj, features, label, test_idx, orig_att)
+    logging.info(f"fidelity_pos: {f_pos_list}")
+    logging.info(f"fidelity_neg: {f_neg_list}")
+    data = pd.DataFrame({'fidelity_pos': f_pos_list, 'fidelity_neg': f_neg_list})
+    data.to_csv(os.path.join(save_dir, 'GT.txt'), sep=',', index=False)
 
-    fidelity_pos_list, fidelity_neg_list = compute_fidelity(GAT, adj, features, label, test_idx, orig_att)
-    logging.info(f"fidelity_pos: {fidelity_pos_list}")
-    logging.info(f"fidelity_neg: {fidelity_neg_list}")
-    data = pd.DataFrame({'fidelity_pos': fidelity_pos_list, 'fidelity_neg': fidelity_neg_list})
-    data.to_csv(os.path.join(save_dir, 'fidelity_data.txt'), sep=',', index=False)
+    f_pos_list, f_neg_list = compute_fidelity_attacked(GAT, adj, features, adj_delta, feats_delta, label, test_idx,
+                                                       new_att)
+    logging.info(f"fidelity_pos_after_attack: {f_pos_list}")
+    logging.info(f"fidelity_neg_after_attack: {f_neg_list}")
+    data = pd.DataFrame({'fidelity_pos': f_pos_list, 'fidelity_neg': f_neg_list})
+    data.to_csv(os.path.join(save_dir, 'GT_after_attack.txt'), sep=',', index=False)

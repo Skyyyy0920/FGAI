@@ -12,13 +12,12 @@ from trainer import VanillaTrainer
 from attackers import PGD
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-# device = 'cpu'
 
 if __name__ == '__main__':
     # dataset = 'amazon_photo'
     # dataset = 'amazon_cs'
-    # dataset = 'coauthor_phy'
     dataset = 'coauthor_cs'
+    # dataset = 'coauthor_phy'
     # dataset = 'pubmed'
     # dataset = 'ogbn-arxiv'
 
@@ -36,7 +35,6 @@ if __name__ == '__main__':
     g, adj, features, label, train_idx, valid_idx, test_idx, num_classes = load_dataset(args)
     N = len(features)
     pos_enc_size = 8
-    args.hid_dim = 80
 
     criterion = nn.CrossEntropyLoss()
     GT_LN = GTNodeClassifier(
@@ -92,7 +90,11 @@ if __name__ == '__main__':
 
     GT_LN.eval()
     adj_delta, feats_delta = attacker.attack(GT_LN, adj, features, test_idx, None)
-    new_outputs, new_graph_repr, new_att = GT_LN(torch.cat((features, feats_delta), dim=0), adj_delta)
+    sp.save_npz(os.path.join(save_dir, 'adj_delta.npz'), adj_delta)
+    torch.save(feats_delta, os.path.join(save_dir, 'feats_delta.pth'))
+
+    feats_ = torch.cat((features, feats_delta), dim=0)
+    new_outputs, new_graph_repr, new_att = GT_LN(feats_, adj_delta)
     new_outputs, new_graph_repr, new_att = \
         new_outputs[:orig_outputs.shape[0]], new_graph_repr[:orig_graph_repr.shape[0]], new_att[:orig_att.shape[0]]
     pred = torch.argmax(new_outputs[test_idx], dim=1)
@@ -104,12 +106,15 @@ if __name__ == '__main__':
     logging.info(f"JSD: {JSD_score}")
     logging.info(f"TVD: {TVD_score}")
 
-    sp.save_npz(os.path.join(save_dir, 'adj_delta.npz'), adj_delta)
-    torch.save(feats_delta, os.path.join(save_dir, 'feats_delta.pth'))
+    f_pos_list, f_neg_list = compute_fidelity(GT_LN, adj, features, label, test_idx, orig_att)
+    logging.info(f"fidelity_pos: {f_pos_list}")
+    logging.info(f"fidelity_neg: {f_neg_list}")
+    data = pd.DataFrame({'fidelity_pos': f_pos_list, 'fidelity_neg': f_neg_list})
+    data.to_csv(os.path.join(save_dir, 'GT+LN.txt'), sep=',', index=False)
 
-    avg_att = torch.mean(orig_att, dim=1)
-    fidelity_pos_list, fidelity_neg_list = compute_fidelity(GT_LN, adj, features, label, test_idx, avg_att)
-    logging.info(f"fidelity_pos: {fidelity_pos_list}")
-    logging.info(f"fidelity_neg: {fidelity_neg_list}")
-    data = pd.DataFrame({'fidelity_pos': fidelity_pos_list, 'fidelity_neg': fidelity_neg_list})
-    data.to_csv(os.path.join(save_dir, 'fidelity_data.txt'), sep=',', index=False)
+    f_pos_list, f_neg_list = compute_fidelity_attacked(GT_LN, adj, features, adj_delta, feats_, label, test_idx,
+                                                       new_att)
+    logging.info(f"fidelity_pos_after_attack: {f_pos_list}")
+    logging.info(f"fidelity_neg_after_attack: {f_neg_list}")
+    data = pd.DataFrame({'fidelity_pos': f_pos_list, 'fidelity_neg': f_neg_list})
+    data.to_csv(os.path.join(save_dir, 'GT+LN_after_attack.txt'), sep=',', index=False)

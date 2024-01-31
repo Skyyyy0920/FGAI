@@ -161,6 +161,7 @@ def evaluate_node_level(model, features, adj, label, test_idx, roc_auc=False):
             logging.info(f'ROC_AUC: {roc_auc_}')
 
     logging.info(f'Test Accuracy: {accuracy:.4f} | F1 Score: {f1:.4f}')
+    print(f'Test Accuracy: {accuracy:.4f} | F1 Score: {f1:.4f}')
     return orig_outputs, orig_graph_repr, orig_att
 
 
@@ -192,6 +193,11 @@ def compute_fidelity(model, adj, feats, labels, test_idx, attention):
     shape = adj.shape
     sorted_indices = torch.argsort(attention, descending=True).cpu().numpy()
 
+    outputs, _, _ = model(feats, adj)
+    pred = torch.argmax(outputs, dim=1)[test_idx]
+    labels_test = labels[test_idx]
+    corr_idx = torch.where(pred == labels_test)[0]
+
     fidelity_pos_list, fidelity_neg_list = [], []
     for split in [1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1]:
         num_edges_to_keep = int(split * len(attention))
@@ -207,15 +213,50 @@ def compute_fidelity(model, adj, feats, labels, test_idx, attention):
         data = np.ones(len(rows_to_keep))
         adj_unimp = csr_matrix((data, (rows_to_keep, cols_to_keep)), shape)
 
-        outputs, _, _ = model(feats, adj)
         outputs_wo_imp, _, _ = model(feats, adj_unimp)
         outputs_wo_unimp, _, _ = model(feats, adj_imp)
-        pred = torch.argmax(outputs, dim=1)[test_idx]
         pred_wo_imp = torch.argmax(outputs_wo_imp, dim=1)[test_idx]
         pred_wo_unimp = torch.argmax(outputs_wo_unimp, dim=1)[test_idx]
-        labels_test = labels[test_idx]
 
-        corr_idx = torch.where(pred == labels_test)[0]
+        fidelity_pos = torch.sum(pred_wo_unimp[corr_idx] == labels_test[corr_idx]) / len(corr_idx)
+        fidelity_neg = torch.sum(pred_wo_imp[corr_idx] == labels_test[corr_idx]) / len(corr_idx)
+        fidelity_pos_list.append(round(fidelity_pos.item(), 4))
+        fidelity_neg_list.append(round(fidelity_neg.item(), 4))
+
+    return fidelity_pos_list, fidelity_neg_list
+
+
+def compute_fidelity_attacked(model, adj, feats, adj_, feats_, labels, test_idx, attention):
+    model.eval()
+    outputs, _, att = model(feats, adj)
+    pred = torch.argmax(outputs, dim=1)[test_idx]
+    labels_test = labels[test_idx]
+    corr_idx = torch.where(pred == labels_test)[0]
+    rows, cols = adj_.nonzero()
+    shape = adj_.shape
+    sorted_indices = torch.argsort(attention, descending=True).cpu().numpy()
+
+    fidelity_pos_list, fidelity_neg_list = [], []
+    for split in [1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1]:
+        num_edges_to_keep = int(split * len(attention))
+        edges_to_keep = sorted_indices[:num_edges_to_keep]
+        rows_to_keep = rows[edges_to_keep]
+        cols_to_keep = cols[edges_to_keep]
+        data = np.ones(len(rows_to_keep))
+        adj_imp = csr_matrix((data, (rows_to_keep, cols_to_keep)), shape)
+
+        edges_to_keep = sorted_indices[-num_edges_to_keep:]
+        rows_to_keep = rows[edges_to_keep]
+        cols_to_keep = cols[edges_to_keep]
+        data = np.ones(len(rows_to_keep))
+        adj_unimp = csr_matrix((data, (rows_to_keep, cols_to_keep)), shape)
+
+        outputs_wo_imp, _, _ = model(feats_, adj_unimp)
+        outputs_wo_unimp, _, _ = model(feats_, adj_imp)
+
+        pred_wo_imp = torch.argmax(outputs_wo_imp, dim=1)[test_idx]
+        pred_wo_unimp = torch.argmax(outputs_wo_unimp, dim=1)[test_idx]
+
         fidelity_pos = torch.sum(pred_wo_unimp[corr_idx] == labels_test[corr_idx]) / len(corr_idx)
         fidelity_neg = torch.sum(pred_wo_imp[corr_idx] == labels_test[corr_idx]) / len(corr_idx)
         fidelity_pos_list.append(round(fidelity_pos.item(), 4))
