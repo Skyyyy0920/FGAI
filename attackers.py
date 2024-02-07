@@ -44,6 +44,7 @@ class PGD(InjectionAttack):
 
     def attack(self, model, adj, features, target_mask, adj_norm_func):
         model.to(self.device)
+        model.eval()
         n_total, n_feat = features.shape
         features = utils.feat_preprocess(features=features, device=self.device)
         adj_tensor = utils.adj_preprocess(adj=adj,
@@ -117,7 +118,8 @@ class PGD(InjectionAttack):
         features_attack = utils.feat_preprocess(features=features_attack, device=self.device)
         model.eval()
 
-        if isinstance(model, GTNodeClassifier) and not os.path.exists(f'./{self.dataset}_pos_enc_perturbed.pth'):
+        if isinstance(model, GTNodeClassifier) and not os.path.exists(
+                f'./GT_pos_encoding/{self.dataset}_pos_enc_perturbed.pth'):
             in_degrees = torch.tensor(adj_attacked_tensor.sum(axis=0)).squeeze()
             model.pos_enc_ = laplacian_pe(adj_attacked_tensor, in_degrees, padding=True).to(features.device)
 
@@ -156,7 +158,8 @@ class PGD(InjectionAttack):
         features_attack = utils.feat_preprocess(features=features_attack, device=self.device)
         model.eval()
 
-        if isinstance(model, GTNodeClassifier) and not os.path.exists(f'./{self.dataset}_pos_enc_perturbed.pth'):
+        if isinstance(model, GTNodeClassifier) and not os.path.exists(
+                f'./GT_pos_encoding/{self.dataset}_pos_enc_perturbed.pth'):
             in_degrees = torch.tensor(adj.sum(axis=0)).squeeze()
             model.pos_enc_ = laplacian_pe(adj, in_degrees, padding=True).to(features_attack.device)
 

@@ -997,8 +997,7 @@ class GNNExplainer(nn.Module):
         num_nodes = graph.num_nodes()
         num_edges = graph.num_edges()
 
-        # Extract node-centered k-hop subgraph and
-        # its associated node and edge features.
+        # Extract node-centered k-hop subgraph and its associated node and edge features.
         sg, inverse_indices = khop_in_subgraph(graph, node_id, self.num_hops)
         sg_nodes = sg.ndata[NID].long()
         sg_edges = sg.edata[EID].long()

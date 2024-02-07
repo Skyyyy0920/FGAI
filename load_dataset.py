@@ -77,7 +77,7 @@ def load_dataset(args):
         g = g.remove_self_loop().add_self_loop()
         print(f"Total edges after adding self-loop {g.number_of_edges()}")
     else:
-        raise ValueError(f"Unknown dataset name: {args.dataset}")
+        raise ValueError(f"Unknown dataset: {args.dataset}")
 
     g = g.to(args.device)
     feats = feats.to(args.device)

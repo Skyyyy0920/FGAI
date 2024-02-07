@@ -49,7 +49,7 @@ if __name__ == '__main__':
         n_layers=args.n_layers,
         n_heads=args.n_heads,
         feat_drop=args.feat_drop,
-        attn_drop=args.attn_drop, LayerNorm=True).to(device)
+        attn_drop=args.attn_drop, layer_norm=True).to(device)
     GAT_AT = GATNodeClassifier(
         feats_size=in_feats,
         hidden_size=args.hid_dim,
@@ -95,7 +95,7 @@ if __name__ == '__main__':
         n_layers=args.n_layers,
         n_heads=args.n_heads,
         feat_drop=args.feat_drop,
-        attn_drop=args.attn_drop, LayerNorm=True
+        attn_drop=args.attn_drop, layer_norm=True
     ).to(device)
     GATv2_FGAI = GATv2NodeClassifier(
         feats_size=in_feats,
@@ -126,7 +126,7 @@ if __name__ == '__main__':
         out_size=num_classes,
         pos_enc_size=pos_enc_size,
         n_layers=args.n_layers,
-        n_heads=args.n_heads, LayerNorm=True
+        n_heads=args.n_heads, layer_norm=True
     ).to(device)
     GT_AT = GTNodeClassifier(
         feats_size=features.shape[1],

@@ -14,7 +14,8 @@ class VanillaTrainer(object):
         self.device = args.device
         self.num_epochs = args.num_epochs
 
-    def train(self, features, adj, label, train_idx, valid_idx):
+    def train(self, features, adj, label, idx_split):
+        train_idx, valid_idx, test_idx = idx_split
         for epoch in range(self.num_epochs):
             self.model.train()
 
@@ -58,7 +59,7 @@ class AdvTrainer(object):
             adj_delta, feats_delta = self.attacker.attack(self.model, adj, feats, target_mask, None)
             outputs, graph_repr, att = self.model(torch.cat((feats, feats_delta), dim=0), adj_delta)
             outputs, graph_repr, att = outputs[:feats.shape[0]], graph_repr[:feats.shape[0]], att[:feats.shape[0]]
-            loss += self.criterion(outputs[train_idx], label[train_idx]) * 0.01
+            loss += self.criterion(outputs[train_idx], label[train_idx]) * 0.1
 
             self.optimizer.zero_grad()
             loss.backward()

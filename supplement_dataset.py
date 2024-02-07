@@ -32,7 +32,6 @@ class HeterophilousGraphDataset(DGLBuiltinDataset):
         )
 
     def process(self):
-        """Load and process the data."""
         try:
             import torch
         except ImportError:
