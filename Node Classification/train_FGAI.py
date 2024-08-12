@@ -27,12 +27,12 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 2. Get experiment args and seed
     # ==================================================================================================
-    with open(f"./optimized_hyperparameter_configurations/{base_model}/{dataset}.yml", 'r') as file:
+    with open(f"./optimized_hyperparameter_configurations/{base_model}/FGAI_{dataset}.yml", 'r') as file:
         args = yaml.full_load(file)
     args = argparse.Namespace(**args)
     args.device = device
     logging_time = time.strftime('%H-%M', time.localtime())
-    save_dir = os.path.join("checkpoints", f"{base_model}+vanilla", f"{dataset}_{logging_time}")
+    save_dir = os.path.join("checkpoints", f"{base_model}+FGAI", f"{dataset}_{logging_time}")
     logging_config(save_dir)
     logging.info(f"args: {args}")
     logging.info(f"Saving path: {save_dir}")
@@ -108,16 +108,45 @@ if __name__ == '__main__':
     )
     criterion = nn.CrossEntropyLoss()
 
+    attacker_delta = PGD(
+        epsilon=args.epsilon,
+        n_epoch=args.n_epoch_attack,
+        n_inject_max=args.n_inject_max,
+        n_edge_max=args.n_edge_max,
+        feat_lim_min=-1,
+        feat_lim_max=1,
+        loss=TVD,
+        device=device
+    )
+    attacker_rho = PGD(
+        epsilon=args.epsilon,
+        n_epoch=args.n_epoch_attack,
+        n_inject_max=args.n_inject_max,
+        n_edge_max=args.n_edge_max,
+        feat_lim_min=-1,
+        feat_lim_max=1,
+        loss=topK_overlap_loss,
+        K=args.K_rho,
+        device=device
+    )
+
     total_params = sum(p.numel() for p in model.parameters())
     logging.info(f"Total parameters: {total_params}")
     logging.info(f"Model: {model}")
     logging.info(f"Optimizer: {optimizer}")
 
     # ==================================================================================================
+    # 6. Load pre-trained vanilla model
+    # ==================================================================================================
+    tim = '15-40'
+    model.load_state_dict(torch.load(f"./checkpoints/{base_model}+vanilla/{dataset}_{tim}/model_parameters.pth"))
+    vanilla_outputs, _, vanilla_att = evaluate_node_level(model, features, adj, label, test_idx)
+
+    # ==================================================================================================
     # 5. Training
     # ==================================================================================================
-    trainer = VanillaTrainer(model, criterion, optimizer, args)
-    trainer.train(features, adj, label, idx_split)
+    trainer = FGAITrainer(model, optimizer, attacker_delta, attacker_rho, args)
+    trainer.train(features, adj, label, idx_split, vanilla_outputs, vanilla_att, save_dir)
 
     orig_outputs, _, orig_att = evaluate_node_level(model, features, adj, label, test_idx)
     torch.save(model.state_dict(), os.path.join(save_dir, 'model_parameters.pth'))
@@ -157,14 +186,14 @@ if __name__ == '__main__':
     logging.info(f"fidelity_pos: {f_pos_list}")
     logging.info(f"fidelity_neg: {f_neg_list}")
     data = pd.DataFrame({'fidelity_pos': f_pos_list, 'fidelity_neg': f_neg_list})
-    data.to_csv(os.path.join(save_dir, f'{base_model}_F.txt'), sep=',', index=False)
+    data.to_csv(os.path.join(save_dir, f'{base_model}+FGAI_F.txt'), sep=',', index=False)
 
     f_pos_list, f_neg_list = compute_fidelity_attacked(model, adj, features, adj_delta, feats_, label, test_idx,
                                                        new_att)
     logging.info(f"fidelity_pos_after_attack: {f_pos_list}")
     logging.info(f"fidelity_neg_after_attack: {f_neg_list}")
     data = pd.DataFrame({'fidelity_pos': f_pos_list, 'fidelity_neg': f_neg_list})
-    data.to_csv(os.path.join(save_dir, f'{base_model}_F_after_attack.txt'), sep=',', index=False)
+    data.to_csv(os.path.join(save_dir, f'{base_model}+FGAI_F_after_attack.txt'), sep=',', index=False)
 
     attacker_ = PGD(
         epsilon=0.00001,
@@ -195,4 +224,8 @@ if __name__ == '__main__':
     logging.info(f"fidelity_pos_after_attack: {f_pos_list}")
     logging.info(f"fidelity_neg_after_attack: {f_neg_list}")
     data = pd.DataFrame({'fidelity_pos': f_pos_list, 'fidelity_neg': f_neg_list})
-    data.to_csv(os.path.join(save_dir, f'{base_model}_F_after_attack_.txt'), sep=',', index=False)
+    data.to_csv(os.path.join(save_dir, f'{base_model}+FGAI_F_after_attack_.txt'), sep=',', index=False)
+
+
+
+

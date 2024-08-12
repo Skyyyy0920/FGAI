@@ -11,10 +11,10 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 def get_args():
-    parser = argparse.ArgumentParser(description="MTNet's args")
+    parser = argparse.ArgumentParser()
 
     # Operation environment
-    parser.add_argument('--seed', type=int, default=20010920, help='Random seed')
+    parser.add_argument('--seed', type=int, default=42, help='Random seed')
     parser.add_argument('--device', type=str, default=device, help='Running on which device')
 
     # Data
