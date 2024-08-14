@@ -5,7 +5,20 @@ import pandas as pd
 from models import *
 from trainer import *
 from attackers import *
-from load_dataset import *
+
+import os.path as osp
+from sklearn.metrics import roc_auc_score
+from sklearn.model_selection import train_test_split
+import torch_geometric.transforms as T
+from torch_geometric.datasets import Planetoid
+from torch_geometric.utils import negative_sampling
+import time
+import scipy.sparse as sp
+import torch
+import torch.nn as nn
+
+import torch.optim as optim
+from deeprobust.graph.defense.pgd import PGD, prox_operators
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(device)
@@ -14,12 +27,9 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 1. Choose the dataset, base model
     # ==================================================================================================
-    # dataset = 'amazon_photo'
-    dataset = 'amazon_cs'
-    # dataset = 'coauthor_cs'
-    # dataset = 'coauthor_phy'
+    dataset = 'cora'
     # dataset = 'pubmed'
-    # dataset = 'ogbn-arxiv'
+    # dataset = 'citeseer'
 
     base_model = 'GAT'
     # base_model = 'GATv2'
@@ -28,7 +38,11 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 2. Get experiment args and seed
     # ==================================================================================================
-    with open(f"./optimized_hyperparameter_configurations/{base_model}/{dataset}.yml", 'r') as file:
+    current_dir = os.getcwd()
+    print("Current work dir：", current_dir)
+    new_dir = current_dir + "/Link Prediction"
+    os.chdir(new_dir)
+    with open(f"./hyperparameter_configurations/{base_model}/{dataset}.yml", 'r') as file:
         args = yaml.full_load(file)
     args = argparse.Namespace(**args)
     args.device = device
@@ -44,17 +58,41 @@ if __name__ == '__main__':
     # ==================================================================================================
     g, adj, features, label, train_idx, valid_idx, test_idx, num_classes = load_dataset(args)
     idx_split = train_idx, valid_idx, test_idx
-    in_feats = features.shape[1]
+
+
+    adj_coo = adj.tocoo()
+    row_indices = adj_coo.row
+    col_indices = adj_coo.col
+    edges = torch.tensor([row_indices, col_indices], dtype=torch.long)
+
+    train_edges, temp_edges = train_test_split(edges.T, test_size=0.2, random_state=42)
+    valid_edges, test_edges = train_test_split(temp_edges, test_size=0.75, random_state=42)
+    train_edges = train_edges.T
+    valid_edges = valid_edges.T
+    test_edges = test_edges.T
+
+    transform = T.Compose([
+        T.NormalizeFeatures(),
+        T.ToDevice(device),
+        T.RandomLinkSplit(num_val=0.05, num_test=0.1, is_undirected=True,
+                          add_negative_train_samples=False),
+    ])
+    path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', 'Planetoid')
+    dataset = Planetoid(path, name='Cora', transform=transform)
+    train_data, val_data, test_data = dataset[0]
+
+    in_feats = dataset.num_features
     pos_enc_size = 8
+    out_size = 64
 
     # ==================================================================================================
     # 4. Build models, define overall loss and optimizer
     # ==================================================================================================
     if base_model == 'GAT':
-        model = GATNodeClassifier(
+        model = GATLinkPredictor(
             feats_size=in_feats,
             hidden_size=args.hid_dim,
-            out_size=num_classes,
+            out_size=out_size,
             n_layers=args.n_layers,
             n_heads=args.n_heads,
             feat_drop=args.feat_drop,
@@ -66,7 +104,7 @@ if __name__ == '__main__':
         model = GATv2NodeClassifier(
             feats_size=in_feats,
             hidden_size=args.hid_dim,
-            out_size=num_classes,
+            out_size=out_size,
             n_layers=args.n_layers,
             n_heads=args.n_heads,
             feat_drop=args.feat_drop,
@@ -78,7 +116,7 @@ if __name__ == '__main__':
         model = GTNodeClassifier(
             feats_size=features.shape[1],
             hidden_size=args.hid_dim,
-            out_size=num_classes,
+            out_size=out_size,
             pos_enc_size=pos_enc_size,
             n_layers=args.n_layers,
             n_heads=args.n_heads,
@@ -114,94 +152,47 @@ if __name__ == '__main__':
     logging.info(f"Model: {model}")
     logging.info(f"Optimizer: {optimizer}")
 
-    import os.path as osp
 
-    import torch
-    from sklearn.metrics import roc_auc_score
+    def train(features, adj, train_edges, valid_edges, ):
+        model.train()
+        optimizer.zero_grad()
+        z, _, _ = model.encode(features, train_edges)
 
-    import torch_geometric.transforms as T
-    from torch_geometric.datasets import Planetoid
-    from torch_geometric.nn import GCNConv
-    from torch_geometric.utils import negative_sampling
+        # We perform a new round of negative sampling for every training epoch:
+        neg_edges = negative_sampling(
+            edge_index=edges, num_nodes=len(features),
+            num_neg_samples=train_edges.size(1), method='sparse')
 
-    import dgl
-    import time
-    import numpy as np
-    import scipy.sparse as sp
-    import torch
-    import torch.nn as nn
-    import torch.nn.functional as F
-    from copy import deepcopy
-    import dgl.function as fn
-    from dgl.nn import GATv2Conv
-    from dgl.base import DGLError
-    from dgl.ops import edge_softmax
-    from dgl.utils import expand_as_pair
-    from dgl.nn.pytorch.utils import Identity
-    import dgl.sparse as dglsp
-    import torch.optim as optim
-    from deeprobust.graph.utils import accuracy
-    from deeprobust.graph.defense.pgd import PGD, prox_operators
+        edge_label_index = torch.cat(
+            [train_edges, neg_edges],
+            dim=-1,
+        )
+        edge_label = torch.cat([
+            torch.ones(train_edges.size(1)),
+            torch.zeros(train_edges.size(1))
+        ], dim=0).to(features.device)
 
-    if torch.cuda.is_available():
-        device = torch.device('cuda')
-    elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-        device = torch.device('mps')
-    else:
-        device = torch.device('cpu')
-
-    transform = T.Compose([
-        T.NormalizeFeatures(),
-        T.ToDevice(device),
-        T.RandomLinkSplit(num_val=0.05, num_test=0.1, is_undirected=True,
-                          add_negative_train_samples=False),
-    ])
-    path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', 'Planetoid')
-    dataset = Planetoid(path, name='Cora', transform=transform)
-    # After applying the `RandomLinkSplit` transform, the data is transformed from
-    # a data object to a list of tuples (train_data, val_data, test_data), with
-    # each element representing the corresponding split.
-    train_data, val_data, test_data = dataset[0]
+        out = model.decode(z, edge_label_index).view(-1)
+        loss = criterion(out, edge_label)
+        loss.backward()
+        optimizer.step()
+        return loss
 
 
-    def precision_at_k(logits, labels, k):
-        # 按照logits排序，选出得分最高的前K个
-        indices = np.argsort(logits)[::-1][:k]  # 降序排列
-        selected_labels = np.array(labels)[indices]
-
-        # 计算 Precision@K
-        precision = np.sum(selected_labels) / k
-        return precision
-
-
-    class Net(torch.nn.Module):
-        def __init__(self, in_channels, hidden_channels, out_channels):
-            super().__init__()
-            self.conv1 = GCNConv(in_channels, hidden_channels)
-            self.conv2 = GCNConv(hidden_channels, out_channels)
-            # self.conv3 = GATConv(in_channels, hidden_channels, 8, 0.6, 0.6, activation=F.elu)
-
-        def encode(self, x, edge_index):
-            x = self.conv1(x, edge_index).relu()
-            return self.conv2(x, edge_index)
-
-        def decode(self, z, edge_label_index):
-            return (z[edge_label_index[0]] * z[edge_label_index[1]]).sum(dim=-1)
-
-        def decode_all(self, z):
-            prob_adj = z @ z.t()
-            return (prob_adj > 0).nonzero(as_tuple=False).t()
-
-
-    model = Net(dataset.num_features, 128, 64).to(device)
-    optimizer = torch.optim.Adam(params=model.parameters(), lr=0.01)
-    criterion = torch.nn.BCEWithLogitsLoss()
+    @torch.no_grad()
+    def test(features, adj, test_edges, ):
+        model.eval()
+        z, _, _ = model.encode(features, test_edges)
+        out = model.decode(z, test_edges).view(-1).sigmoid()
+        # precision_k = precision_at_k(data.edge_label.cpu().numpy(), out.cpu().numpy(), k=10)
+        # print("@10:", precision_k)
+        return roc_auc_score(torch.ones(test_edges.size(1)).numpy(), out.cpu().numpy())
 
 
     def train():
         model.train()
         optimizer.zero_grad()
-        z = model.encode(train_data.x, train_data.edge_index)
+        z, _, _ = model.encode(train_data.x, train_data.edge_index)
 
         # We perform a new round of negative sampling for every training epoch:
         neg_edge_index = negative_sampling(
@@ -227,7 +218,7 @@ if __name__ == '__main__':
     @torch.no_grad()
     def test(data):
         model.eval()
-        z = model.encode(data.x, data.edge_index)
+        z, _, _ = model.encode(data.x, data.edge_index)
         out = model.decode(z, data.edge_label_index).view(-1).sigmoid()
         # precision_k = precision_at_k(data.edge_label.cpu().numpy(), out.cpu().numpy(), k=10)
         # print("@10:", precision_k)
@@ -236,14 +227,16 @@ if __name__ == '__main__':
 
     best_val_auc = final_test_auc = 0
     for epoch in range(1, 101):
+        # loss = train(features, adj, train_edges, valid_edges, )
         loss = train()
+        # val_auc = test(features, adj, valid_edges)
+        # test_auc = test(features, adj, test_edges)
         val_auc = test(val_data)
         test_auc = test(test_data)
         if val_auc > best_val_auc:
             best_val_auc = val_auc
             final_test_auc = test_auc
-        print(f'Epoch: {epoch:03d}, Loss: {loss:.4f}, Val: {val_auc:.4f}, '
-              f'Test: {test_auc:.4f}')
+        print(f'Epoch: {epoch:03d}, Loss: {loss:.4f}, Val: {val_auc:.4f}, Test: {test_auc:.4f}')
 
     print(f'Final Test: {final_test_auc:.4f}')
 

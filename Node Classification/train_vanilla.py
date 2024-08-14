@@ -14,21 +14,25 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 1. Choose the dataset, base model
     # ==================================================================================================
-    # dataset = 'amazon_photo'
-    dataset = 'amazon_cs'
+    dataset = 'amazon_photo'
+    # dataset = 'amazon_cs'
     # dataset = 'coauthor_cs'
     # dataset = 'coauthor_phy'
     # dataset = 'pubmed'
     # dataset = 'ogbn-arxiv'
 
-    # base_model = 'GAT'
+    base_model = 'GAT'
     # base_model = 'GATv2'
-    base_model = 'GT'
+    # base_model = 'GT'
 
     # ==================================================================================================
     # 2. Get experiment args and seed
     # ==================================================================================================
-    with open(f"./Node Classification/optimized_hyperparameter_configurations/{base_model}/{dataset}.yml", 'r') as file:
+    current_dir = os.getcwd()
+    print("Current work dir：", current_dir)
+    new_dir = current_dir + "/Node Classification"
+    os.chdir(new_dir)
+    with open(f"./hyperparameter_configurations/{base_model}/{dataset}.yml", 'r') as file:
         args = yaml.full_load(file)
     args = argparse.Namespace(**args)
     args.device = device

@@ -314,3 +314,13 @@ def laplacian_pe(A, in_degrees, k=8, padding=False, return_eigval=False):
     if return_eigval:
         return PE, eigvals
     return PE
+
+
+def precision_at_k(logits, labels, k):
+    # 按照logits排序，选出得分最高的前K个
+    indices = np.argsort(logits)[::-1][:k]  # 降序排列
+    selected_labels = np.array(labels)[indices]
+
+    # 计算 Precision@K
+    precision = np.sum(selected_labels) / k
+    return precision

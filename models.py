@@ -17,6 +17,7 @@ from utils import k_shell_algorithm, feature_normalize
 import torch.optim as optim
 from deeprobust.graph.utils import accuracy
 from deeprobust.graph.defense.pgd import PGD, prox_operators
+from scipy.sparse import csr_matrix
 
 
 class GATConv(nn.Module):
@@ -336,6 +337,71 @@ class GTNodeClassifier(nn.Module):
         logits = self.predictor(h)
 
         return logits, graph_representation, att.val.squeeze()
+
+
+class Net(nn.Module):
+    def __init__(self, in_channels, hidden_channels, out_channels):
+        super().__init__()
+        self.conv1 = GCNConv(in_channels, hidden_channels)
+        self.conv2 = GCNConv(hidden_channels, out_channels)
+        # self.conv3 = GATConv(in_channels, hidden_channels, 8, 0.6, 0.6, activation=F.elu)
+
+    def encode(self, x, edge_index):
+        x = self.conv1(x, edge_index).relu()
+        return self.conv2(x, edge_index)
+
+    def decode(self, z, edge_label_index):
+        return (z[edge_label_index[0]] * z[edge_label_index[1]]).sum(dim=-1)
+
+
+class GATLinkPredictor(nn.Module):
+    def __init__(self,
+                 feats_size,
+                 hidden_size,
+                 out_size,
+                 n_layers,
+                 n_heads,
+                 feat_drop,
+                 attn_drop,
+                 layer_norm=False):
+        super(GATLinkPredictor, self).__init__()
+        self.layers = nn.ModuleList()
+        self.layers.append(
+            GATConv(feats_size, hidden_size, n_heads[0], feat_drop, attn_drop, activation=F.elu)
+        )
+        for i in range(0, n_layers - 1):
+            in_hid_dim = hidden_size * n_heads[i]
+            self.layers.append(
+                GATConv(in_hid_dim, hidden_size, n_heads[i + 1], feat_drop, attn_drop, activation=F.elu)
+            )
+        self.out_layer = GATConv(hidden_size * n_heads[-1], out_size, 1, feat_drop, attn_drop, activation=F.elu)
+        self.dropout = nn.Dropout(0.6)
+        self.layer_norm = layer_norm
+
+    def encode(self, x, train_edges):
+        row_indices = train_edges[0].cpu().numpy()
+        col_indices = train_edges[1].cpu().numpy()
+        data = np.ones(len(row_indices))
+        num_nodes = len(x)
+        adj = csr_matrix((data, (row_indices, col_indices)), shape=(num_nodes, num_nodes))
+        if self.layer_norm:
+            x = feature_normalize(x)
+        g = dgl.from_scipy(adj).to(x.device)
+        g.ndata['features'] = x
+
+        for layer in self.layers:
+            x, att = layer(g, x, get_attention=True)
+            x = F.elu(x, alpha=1)
+            x = x.flatten(1)  # use concat to handle multi-head. for mean method, use x = x.mean(1)
+            x = self.dropout(x)
+        graph_representation = x.mean(dim=0)
+        x, att = self.out_layer(g, x, get_attention=True)
+        logits = x.flatten(1)
+
+        return logits, graph_representation, att.squeeze()
+
+    def decode(self, z, edge_label_index):
+        return (z[edge_label_index[0]] * z[edge_label_index[1]]).sum(dim=-1)
 
 
 class GATGraphClassifier(nn.Module):
