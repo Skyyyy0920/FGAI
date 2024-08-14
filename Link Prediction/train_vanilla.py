@@ -131,42 +131,6 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 5. Training
     # ==================================================================================================
-    def train(features, adj, train_edges, valid_edges, ):
-        model.train()
-        optimizer.zero_grad()
-        z, _, _ = model.encode(features, train_edges)
-
-        # We perform a new round of negative sampling for every training epoch:
-        neg_edges = negative_sampling(
-            edge_index=edges, num_nodes=len(features),
-            num_neg_samples=train_edges.size(1), method='sparse')
-
-        edge_label_index = torch.cat(
-            [train_edges, neg_edges],
-            dim=-1,
-        )
-        edge_label = torch.cat([
-            torch.ones(train_edges.size(1)),
-            torch.zeros(train_edges.size(1))
-        ], dim=0).to(features.device)
-
-        out = model.decode(z, edge_label_index).view(-1)
-        loss = criterion(out, edge_label)
-        loss.backward()
-        optimizer.step()
-        return loss
-
-
-    @torch.no_grad()
-    def test(features, adj, test_edges, ):
-        model.eval()
-        z, _, _ = model.encode(features, test_edges)
-        out = model.decode(z, test_edges).view(-1).sigmoid()
-        # precision_k = precision_at_k(data.edge_label.cpu().numpy(), out.cpu().numpy(), k=10)
-        # print("@10:", precision_k)
-        return roc_auc_score(torch.ones(test_edges.size(1)).numpy(), out.cpu().numpy())
-
-
     def train():
         model.train()
         optimizer.zero_grad()
@@ -205,10 +169,7 @@ if __name__ == '__main__':
 
     best_val_auc = final_test_auc = 0
     for epoch in range(1, 81):
-        # loss = train(features, adj, train_edges, valid_edges, )
         loss = train()
-        # val_auc = test(features, adj, valid_edges)
-        # test_auc = test(features, adj, test_edges)
         val_auc = test(val_data)
         test_auc = test(test_data)
         if val_auc > best_val_auc:
