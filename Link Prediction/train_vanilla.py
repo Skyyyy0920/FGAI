@@ -1,6 +1,5 @@
 import yaml
 import argparse
-import pandas as pd
 
 from models import *
 from trainer import *
@@ -11,8 +10,6 @@ import torch_geometric.transforms as T
 from torch_geometric.datasets import Planetoid
 from torch_geometric.utils import negative_sampling
 
-from deeprobust.graph.defense.pgd import PGD, prox_operators
-
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(device)
 
@@ -20,9 +17,9 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 1. Choose the dataset, base model
     # ==================================================================================================
-    dataset = 'cora'
+    # dataset = 'cora'
     # dataset = 'pubmed'
-    # dataset = 'citeseer'
+    dataset = 'citeseer'
 
     base_model = 'GAT'
     # base_model = 'GATv2'
