@@ -28,7 +28,7 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 2. Get experiment args and seed
     # ==================================================================================================
-    with open(f"./optimized_hyperparameter_configurations/{base_model}/{dataset}.yml", 'r') as file:
+    with open(f"./Node Classification/optimized_hyperparameter_configurations/{base_model}/{dataset}.yml", 'r') as file:
         args = yaml.full_load(file)
     args = argparse.Namespace(**args)
     args.device = device
