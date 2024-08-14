@@ -10,7 +10,7 @@ from graphgallery.datasets import NPZDataset
 def load_dataset(args):
     print(f"{args.dataset} info: ")
     if args.dataset in ['ogbn-arxiv', 'ogbn-products', 'ogbn-papers100M']:
-        dataset = DglNodePropPredDataset(args.dataset)
+        dataset = DglNodePropPredDataset(args.dataset, root='./dataset')
         g, label = dataset[0]
         label = label.squeeze()
         if args.dataset in ['ogbn-arxiv', 'ogbn-papers100M']:
@@ -62,7 +62,7 @@ def load_dataset(args):
         N = g.number_of_nodes()
         adj = sp.csr_matrix((np.ones(len(src)), (src.cpu().numpy(), dst.cpu().numpy())), shape=(N, N))
     elif args.dataset in ['amazon_photo', 'amazon_cs', 'coauthor_cs', 'coauthor_phy']:
-        dataset = NPZDataset(args.dataset, root="../dataset/", verbose=False)
+        dataset = NPZDataset(args.dataset, root="./dataset", verbose=False)
         graph = dataset.graph
         splits = dataset.split_nodes()
         train_idx, valid_idx, test_idx = splits.train_nodes, splits.val_nodes, splits.test_nodes

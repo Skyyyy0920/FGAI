@@ -47,7 +47,6 @@ if __name__ == '__main__':
     # ==================================================================================================
     g, adj, features, label, train_idx, valid_idx, test_idx, num_classes = load_dataset(args)
     idx_split = train_idx, valid_idx, test_idx
-    in_feats = features.shape[1]
     pos_enc_size = 8
 
     # ==================================================================================================
@@ -55,7 +54,7 @@ if __name__ == '__main__':
     # ==================================================================================================
     if base_model == 'GAT':
         model = GATNodeClassifier(
-            feats_size=in_feats,
+            feats_size=features.shape[1],
             hidden_size=args.hid_dim,
             out_size=num_classes,
             n_layers=args.n_layers,
@@ -67,7 +66,7 @@ if __name__ == '__main__':
 
     elif base_model == 'GATv2':
         model = GATv2NodeClassifier(
-            feats_size=in_feats,
+            feats_size=features.shape[1],
             hidden_size=args.hid_dim,
             out_size=num_classes,
             n_layers=args.n_layers,

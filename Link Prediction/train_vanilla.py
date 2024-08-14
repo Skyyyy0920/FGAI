@@ -6,18 +6,11 @@ from models import *
 from trainer import *
 from attackers import *
 
-import os.path as osp
 from sklearn.metrics import roc_auc_score
-from sklearn.model_selection import train_test_split
 import torch_geometric.transforms as T
 from torch_geometric.datasets import Planetoid
 from torch_geometric.utils import negative_sampling
-import time
-import scipy.sparse as sp
-import torch
-import torch.nn as nn
 
-import torch.optim as optim
 from deeprobust.graph.defense.pgd import PGD, prox_operators
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -56,32 +49,14 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 3. Prepare data
     # ==================================================================================================
-    g, adj, features, label, train_idx, valid_idx, test_idx, num_classes = load_dataset(args)
-    idx_split = train_idx, valid_idx, test_idx
-
-
-    adj_coo = adj.tocoo()
-    row_indices = adj_coo.row
-    col_indices = adj_coo.col
-    edges = torch.tensor([row_indices, col_indices], dtype=torch.long)
-
-    train_edges, temp_edges = train_test_split(edges.T, test_size=0.2, random_state=42)
-    valid_edges, test_edges = train_test_split(temp_edges, test_size=0.75, random_state=42)
-    train_edges = train_edges.T
-    valid_edges = valid_edges.T
-    test_edges = test_edges.T
-
     transform = T.Compose([
         T.NormalizeFeatures(),
         T.ToDevice(device),
         T.RandomLinkSplit(num_val=0.05, num_test=0.1, is_undirected=True,
                           add_negative_train_samples=False),
     ])
-    path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', 'Planetoid')
-    dataset = Planetoid(path, name='Cora', transform=transform)
+    dataset = Planetoid('./dataset', name='Cora', transform=transform)
     train_data, val_data, test_data = dataset[0]
-
-    in_feats = dataset.num_features
     pos_enc_size = 8
     out_size = 64
 
@@ -90,7 +65,7 @@ if __name__ == '__main__':
     # ==================================================================================================
     if base_model == 'GAT':
         model = GATLinkPredictor(
-            feats_size=in_feats,
+            feats_size=dataset.num_features,
             hidden_size=args.hid_dim,
             out_size=out_size,
             n_layers=args.n_layers,
@@ -102,7 +77,7 @@ if __name__ == '__main__':
 
     elif base_model == 'GATv2':
         model = GATv2NodeClassifier(
-            feats_size=in_feats,
+            feats_size=dataset.num_features,
             hidden_size=args.hid_dim,
             out_size=out_size,
             n_layers=args.n_layers,
@@ -114,7 +89,7 @@ if __name__ == '__main__':
 
     elif base_model == 'GT':
         model = GTNodeClassifier(
-            feats_size=features.shape[1],
+            feats_size=dataset.num_features,
             hidden_size=args.hid_dim,
             out_size=out_size,
             pos_enc_size=pos_enc_size,
@@ -153,6 +128,9 @@ if __name__ == '__main__':
     logging.info(f"Optimizer: {optimizer}")
 
 
+    # ==================================================================================================
+    # 5. Training
+    # ==================================================================================================
     def train(features, adj, train_edges, valid_edges, ):
         model.train()
         optimizer.zero_grad()
@@ -226,7 +204,7 @@ if __name__ == '__main__':
 
 
     best_val_auc = final_test_auc = 0
-    for epoch in range(1, 101):
+    for epoch in range(1, 81):
         # loss = train(features, adj, train_edges, valid_edges, )
         loss = train()
         # val_auc = test(features, adj, valid_edges)
@@ -240,89 +218,5 @@ if __name__ == '__main__':
 
     print(f'Final Test: {final_test_auc:.4f}')
 
-    z = model.encode(test_data.x, test_data.edge_index)
-    final_edge_index = model.decode_all(z)
-
-    # ==================================================================================================
-    # 5. Training
-    # ==================================================================================================
-    trainer = VanillaTrainer(model, criterion, optimizer, args)
-    trainer.train(features, adj, label, idx_split)
-
-    orig_outputs, _, orig_att = evaluate_node_level(model, features, adj, label, test_idx)
-    torch.save(model.state_dict(), os.path.join(save_dir, 'model_parameters.pth'))
-
-    attacker = PGD(
-        epsilon=args.epsilon,
-        n_epoch=args.n_epoch_attack,
-        n_inject_max=args.n_inject_max,
-        n_edge_max=args.n_edge_max,
-        feat_lim_min=-1,
-        feat_lim_max=1,
-        device=device
-    )
-    adj_delta, feats_delta = attacker.attack(model, adj, features, test_idx, None)
-    sp.save_npz(os.path.join(save_dir, 'adj_delta.npz'), adj_delta)
-    torch.save(feats_delta, os.path.join(save_dir, 'feats_delta.pth'))
-
-    if base_model == 'GT' and need_update:
-        in_degrees = torch.tensor(adj_delta.sum(axis=0)).squeeze()
-        pos_enc_ = laplacian_pe(adj_delta, in_degrees, k=pos_enc_size, padding=True).to(device)
-        torch.save(pos_enc_, f'./{dataset}_pos_enc_perturbed.pth')
-        model.pos_enc_ = pos_enc_
-
-    feats_ = torch.cat((features, feats_delta), dim=0)
-    new_outputs, _, new_att = model(feats_, adj_delta)
-    new_outputs, new_att = new_outputs[:orig_outputs.shape[0]], new_att[:orig_att.shape[0]]
-    pred = torch.argmax(new_outputs[test_idx], dim=1)
-    accuracy = accuracy_score(label[test_idx].cpu(), pred.cpu())
-    logging.info(f"Accuracy after Injection Attack: {accuracy:.4f}")
-
-    TVD_score = TVD(orig_outputs, new_outputs) / len(orig_outputs)
-    JSD_score = JSD(orig_att, new_att) / len(orig_att)
-    logging.info(f"JSD: {JSD_score}")
-    logging.info(f"TVD: {TVD_score}")
-
-    f_pos_list, f_neg_list = compute_fidelity(model, adj, features, label, test_idx, orig_att)
-    logging.info(f"fidelity_pos: {f_pos_list}")
-    logging.info(f"fidelity_neg: {f_neg_list}")
-    data = pd.DataFrame({'fidelity_pos': f_pos_list, 'fidelity_neg': f_neg_list})
-    data.to_csv(os.path.join(save_dir, f'{base_model}_F.txt'), sep=',', index=False)
-
-    f_pos_list, f_neg_list = compute_fidelity_attacked(model, adj, features, adj_delta, feats_, label, test_idx,
-                                                       new_att)
-    logging.info(f"fidelity_pos_after_attack: {f_pos_list}")
-    logging.info(f"fidelity_neg_after_attack: {f_neg_list}")
-    data = pd.DataFrame({'fidelity_pos': f_pos_list, 'fidelity_neg': f_neg_list})
-    data.to_csv(os.path.join(save_dir, f'{base_model}_F_after_attack.txt'), sep=',', index=False)
-
-    attacker_ = PGD(
-        epsilon=0.00001,
-        n_epoch=args.n_epoch_attack,
-        n_inject_max=args.n_inject_max,
-        n_edge_max=args.n_edge_max,
-        feat_lim_min=-0.001,
-        feat_lim_max=0.001,
-        device=device,
-        mode='Modification Attack'
-    )
-    adj_delta_, feats_delta_ = attacker_.attack(model, adj, features, test_idx, None)
-    sp.save_npz(os.path.join(save_dir, 'adj_delta_.npz'), adj_delta_)
-    torch.save(feats_delta_, os.path.join(save_dir, 'feats_delta_.pth'))
-
-    new_outputs_, new_graph_repr, new_att_ = model(feats_delta_, adj_delta_)
-    pred = torch.argmax(new_outputs_[test_idx], dim=1)
-    accuracy = accuracy_score(label[test_idx].cpu(), pred.cpu())
-    logging.info(f"Accuracy after Modification Attack: {accuracy:.4f}")
-
-    TVD_score = TVD(orig_outputs, new_outputs_) / len(orig_outputs)
-    JSD_score = JSD(orig_att, new_att_) / len(orig_att)
-    logging.info(f"JSD: {JSD_score}")
-    logging.info(f"TVD: {TVD_score}")
-
-    f_pos_list, f_neg_list = compute_fidelity_attacked(model, adj, features, adj_delta_, feats_delta_,
-                                                       label, test_idx, new_att)
-    logging.info(f"fidelity_pos_after_attack: {f_pos_list}")
-    logging.info(f"fidelity_neg_after_attack: {f_neg_list}")
-    data = pd.DataFrame({'fidelity_pos': f_pos_list, 'fidelity_neg': f_neg_list})
-    data.to_csv(os.path.join(save_dir, f'{base_model}_F_after_attack_.txt'), sep=',', index=False)
+    # z = model.encode(test_data.x, test_data.edge_index)
+    # final_edge_index = model.decode_all(z)
