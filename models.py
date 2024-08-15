@@ -161,63 +161,26 @@ class GATNodeClassifier(nn.Module):
                  n_heads,
                  feat_drop,
                  attn_drop,
+                 v2=False,
                  layer_norm=False):
         super(GATNodeClassifier, self).__init__()
+        if v2 is True:
+            Conv = GATv2Conv
+        else:
+            Conv = GATConv
         self.layers = nn.ModuleList()
         self.layers.append(
-            GATConv(feats_size, hidden_size, n_heads[0], feat_drop, attn_drop, activation=F.elu)
+            Conv(feats_size, hidden_size, n_heads[0], feat_drop, attn_drop, activation=F.elu,
+                 allow_zero_in_degree=True)
         )
         for i in range(0, n_layers - 1):
             in_hid_dim = hidden_size * n_heads[i]
             self.layers.append(
-                GATConv(in_hid_dim, hidden_size, n_heads[i + 1], feat_drop, attn_drop, activation=F.elu)
+                Conv(in_hid_dim, hidden_size, n_heads[i + 1], feat_drop, attn_drop, activation=F.elu,
+                     allow_zero_in_degree=True)
             )
-        self.out_layer = GATConv(hidden_size * n_heads[-1], out_size, 1, feat_drop, attn_drop, activation=F.elu)
-        self.dropout = nn.Dropout(0.6)
-        self.layer_norm = layer_norm
-
-    def forward(self, x, adj):
-        if self.layer_norm:
-            x = feature_normalize(x)
-        g = dgl.from_scipy(adj).to(x.device)
-        g.ndata['features'] = x
-
-        for layer in self.layers:
-            x, att = layer(g, x, get_attention=True)
-            x = F.elu(x, alpha=1)
-            x = x.flatten(1)  # use concat to handle multi-head. for mean method, use x = x.mean(1)
-            x = self.dropout(x)
-        graph_representation = x.mean(dim=0)
-        x, att = self.out_layer(g, x, get_attention=True)
-        logits = x.flatten(1)
-
-        return logits, graph_representation, att.squeeze()
-
-
-class GATv2NodeClassifier(nn.Module):
-    def __init__(self,
-                 feats_size,
-                 hidden_size,
-                 out_size,
-                 n_layers,
-                 n_heads,
-                 feat_drop,
-                 attn_drop,
-                 layer_norm=False):
-        super(GATv2NodeClassifier, self).__init__()
-        self.layers = nn.ModuleList()
-        self.layers.append(
-            GATv2Conv(feats_size, hidden_size, n_heads[0], feat_drop, attn_drop, activation=F.elu,
-                      allow_zero_in_degree=True)
-        )
-        for i in range(0, n_layers - 1):
-            in_hid_dim = hidden_size * n_heads[i]
-            self.layers.append(
-                GATv2Conv(in_hid_dim, hidden_size, n_heads[i + 1], feat_drop, attn_drop, activation=F.elu,
-                          allow_zero_in_degree=True)
-            )
-        self.out_layer = GATv2Conv(hidden_size * n_heads[-1], out_size, 1, feat_drop, attn_drop, activation=F.elu,
-                                   allow_zero_in_degree=True)
+        self.out_layer = Conv(hidden_size * n_heads[-1], out_size, 1, feat_drop, attn_drop, activation=F.elu,
+                              allow_zero_in_degree=True)
         self.dropout = nn.Dropout(0.6)
         self.layer_norm = layer_norm
 
@@ -348,18 +311,26 @@ class GATLinkPredictor(nn.Module):
                  n_heads,
                  feat_drop,
                  attn_drop,
+                 v2=False,
                  layer_norm=False):
         super(GATLinkPredictor, self).__init__()
+        if v2 is True:
+            Conv = GATv2Conv
+        else:
+            Conv = GATConv
         self.layers = nn.ModuleList()
         self.layers.append(
-            GATConv(feats_size, hidden_size, n_heads[0], feat_drop, attn_drop, activation=F.elu)
+            Conv(feats_size, hidden_size, n_heads[0], feat_drop, attn_drop, activation=F.elu,
+                 allow_zero_in_degree=True)
         )
         for i in range(0, n_layers - 1):
             in_hid_dim = hidden_size * n_heads[i]
             self.layers.append(
-                GATConv(in_hid_dim, hidden_size, n_heads[i + 1], feat_drop, attn_drop, activation=F.elu)
+                Conv(in_hid_dim, hidden_size, n_heads[i + 1], feat_drop, attn_drop, activation=F.elu,
+                     allow_zero_in_degree=True)
             )
-        self.out_layer = GATConv(hidden_size * n_heads[-1], out_size, 1, feat_drop, attn_drop, activation=F.elu)
+        self.out_layer = Conv(hidden_size * n_heads[-1], out_size, 1, feat_drop, attn_drop, activation=F.elu,
+                              allow_zero_in_degree=True)
         self.dropout = nn.Dropout(0.6)
         self.layer_norm = layer_norm
 

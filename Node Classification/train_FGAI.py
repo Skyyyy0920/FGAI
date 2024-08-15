@@ -65,7 +65,7 @@ if __name__ == '__main__':
         ).to(device)
 
     elif base_model == 'GATv2':
-        model = GATv2NodeClassifier(
+        model = GATNodeClassifier(
             feats_size=features.shape[1],
             hidden_size=args.hid_dim,
             out_size=num_classes,
@@ -73,6 +73,7 @@ if __name__ == '__main__':
             n_heads=args.n_heads,
             feat_drop=args.feat_drop,
             attn_drop=args.attn_drop,
+            v2=True,
             layer_norm=False
         ).to(device)
 
@@ -139,14 +140,14 @@ if __name__ == '__main__':
     logging.info(f"Optimizer: {optimizer}")
 
     # ==================================================================================================
-    # 6. Load pre-trained vanilla model
+    # 5. Load pre-trained vanilla model
     # ==================================================================================================
-    tim = '15-40'
+    tim = '00-40'
     model.load_state_dict(torch.load(f"./checkpoints/{base_model}+vanilla/{dataset}_{tim}/model_parameters.pth"))
     vanilla_outputs, _, vanilla_att = evaluate_node_level(model, features, adj, label, test_idx)
 
     # ==================================================================================================
-    # 5. Training
+    # 6. Training
     # ==================================================================================================
     trainer = FGAITrainer(model, optimizer, attacker_delta, attacker_rho, args)
     trainer.train(features, adj, label, idx_split, vanilla_outputs, vanilla_att, save_dir)

@@ -65,7 +65,7 @@ if __name__ == '__main__':
         ).to(device)
 
     elif base_model == 'GATv2':
-        model = GATv2NodeClassifier(
+        model = GATNodeClassifier(
             feats_size=features.shape[1],
             hidden_size=args.hid_dim,
             out_size=num_classes,
@@ -73,6 +73,7 @@ if __name__ == '__main__':
             n_heads=args.n_heads,
             feat_drop=args.feat_drop,
             attn_drop=args.attn_drop,
+            v2=True,
             layer_norm=False
         ).to(device)
 

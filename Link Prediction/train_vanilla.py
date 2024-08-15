@@ -18,9 +18,9 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 1. Choose the dataset, base model
     # ==================================================================================================
-    # dataset = 'cora'
+    dataset = 'cora'
     # dataset = 'pubmed'
-    dataset = 'citeseer'
+    # dataset = 'citeseer'
 
     base_model = 'GAT'
     # base_model = 'GATv2'
@@ -74,7 +74,7 @@ if __name__ == '__main__':
         ).to(device)
 
     elif base_model == 'GATv2':
-        model = GATv2NodeClassifier(
+        model = GATLinkPredictor(
             feats_size=dataset.num_features,
             hidden_size=args.hid_dim,
             out_size=out_size,
@@ -82,6 +82,7 @@ if __name__ == '__main__':
             n_heads=args.n_heads,
             feat_drop=args.feat_drop,
             attn_drop=args.attn_drop,
+            v2=True,
             layer_norm=False
         ).to(device)
 
@@ -174,9 +175,9 @@ if __name__ == '__main__':
         if val_auc > best_val_auc:
             best_val_auc = val_auc
             final_test_auc = test_auc
-        print(f'Epoch: {epoch:03d}, Loss: {loss:.4f}, Val: {val_auc:.4f}, Test: {test_auc:.4f}')
+        logging.info(f'Epoch: {epoch:03d}, Loss: {loss:.4f}, Val: {val_auc:.4f}, Test: {test_auc:.4f}')
 
-    print(f'Final Test: {final_test_auc:.4f}')
+    logging.info(f'Final Test: {final_test_auc:.4f}')
 
     # z = model.encode(test_data.x, test_data.edge_index)
     # final_edge_index = model.decode_all(z)
@@ -211,8 +212,6 @@ if __name__ == '__main__':
     row_indices, col_indices = adj_delta.nonzero()
     edges_delta = torch.tensor([row_indices, col_indices])
     z, _, new_att = model.encode(feats_, edges_delta)
-    print(len(new_att))
-    print(len(orig_att))
     new_outputs = model.decode(z, test_data.edge_label_index).view(-1).sigmoid()
     new_outputs, new_att = new_outputs[:orig_outputs.shape[0]], new_att[:orig_att.shape[0]]
     accuracy = roc_auc_score(test_data.edge_label.detach().cpu().numpy(), new_outputs.detach().cpu().numpy())
