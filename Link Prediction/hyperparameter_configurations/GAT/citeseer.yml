@@ -1,7 +1,7 @@
 dataset: citeseer
-num_epochs: 200
-n_inject_max: 20
-n_edge_max: 40
+num_epochs: 80
+n_inject_max: 10
+n_edge_max: 20
 epsilon: 0.1
 n_epoch_attack: 10
 hid_dim: 512

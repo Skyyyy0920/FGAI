@@ -53,23 +53,18 @@ def get_args():
 
 
 if __name__ == '__main__':
-    # ==================================================================================================
-    # 1. Get experiment args and seed
-    # ==================================================================================================
-    print('\n' + '=' * 36 + ' Get experiment args ' + '=' * 36)
     args = get_args()
     print(f"Using device: {args.device}")
     print(f"PyTorch Version: {torch.__version__}")
-    # setup_seed(args.seed)  # make the experiment repeatable
-
-    # ==================================================================================================
-    # 2. Setup logger
-    # ==================================================================================================
+    current_dir = os.getcwd()
+    print("Current work dir：", current_dir)
+    new_dir = current_dir + "/Node Classification"
+    os.chdir(new_dir)
     print('\n' + '=' * 36 + ' Setup logger ' + '=' * 36)
     for handler in logging.root.handlers[:]:
         logging.root.removeHandler(handler)
-    logging_time = time.strftime('%m-%d_%H-%M', time.localtime())
-    save_dir = os.path.join(args.save_path, f"{args.dataset}_{logging_time}")
+    logging_time = time.strftime('%H-%M', time.localtime())
+    save_dir = os.path.join("checkpoints", f"{args.base_model}+vanilla", f"{args.dataset}_{logging_time}")
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
     print(f"Saving path: {save_dir}")

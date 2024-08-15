@@ -7,6 +7,7 @@ from attackers import *
 
 from sklearn.metrics import roc_auc_score
 import torch_geometric.transforms as T
+import pandas as pd
 from torch_geometric.datasets import Planetoid
 from torch_geometric.utils import negative_sampling
 
@@ -131,7 +132,7 @@ if __name__ == '__main__':
     def train():
         model.train()
         optimizer.zero_grad()
-        z, _, _ = model.encode(train_data.x, train_data.edge_index)
+        z, _, att = model.encode(train_data.x, train_data.edge_index)
 
         # We perform a new round of negative sampling for every training epoch:
         neg_edge_index = negative_sampling(
@@ -157,7 +158,7 @@ if __name__ == '__main__':
     @torch.no_grad()
     def test(data):
         model.eval()
-        z, _, _ = model.encode(data.x, data.edge_index)
+        z, _, att = model.encode(data.x, data.edge_index)
         out = model.decode(z, data.edge_label_index).view(-1).sigmoid()
         # precision_k = precision_at_k(data.edge_label.cpu().numpy(), out.cpu().numpy(), k=10)
         # print("@10:", precision_k)
@@ -165,7 +166,8 @@ if __name__ == '__main__':
 
 
     best_val_auc = final_test_auc = 0
-    for epoch in range(1, 81):
+    # for epoch in range(1, 81):
+    for epoch in range(args.num_epochs):
         loss = train()
         val_auc = test(val_data)
         test_auc = test(test_data)
@@ -178,3 +180,45 @@ if __name__ == '__main__':
 
     # z = model.encode(test_data.x, test_data.edge_index)
     # final_edge_index = model.decode_all(z)
+
+    model.eval()
+    z, _, orig_att = model.encode(test_data.x, test_data.edge_index)
+    orig_outputs = model.decode(z, test_data.edge_label_index).view(-1).sigmoid()
+    torch.save(model.state_dict(), os.path.join(save_dir, 'model_parameters.pth'))
+
+    attacker = PGD(
+        epsilon=args.epsilon,
+        n_epoch=args.n_epoch_attack,
+        n_inject_max=args.n_inject_max,
+        n_edge_max=args.n_edge_max,
+        feat_lim_min=-1,
+        feat_lim_max=1,
+        eval_metric=roc_auc_score,
+        device=device
+    )
+    test_nodes = torch.unique(test_data.edge_index.flatten())
+    adj_delta, feats_delta = attacker.attack(model, test_data, train_data.x, test_nodes)
+    sp.save_npz(os.path.join(save_dir, 'adj_delta.npz'), adj_delta)
+    torch.save(feats_delta, os.path.join(save_dir, 'feats_delta.pth'))
+
+    if base_model == 'GT' and need_update:
+        in_degrees = torch.tensor(adj_delta.sum(axis=0)).squeeze()
+        pos_enc_ = laplacian_pe(adj_delta, in_degrees, k=pos_enc_size, padding=True).to(device)
+        torch.save(pos_enc_, f'./{dataset}_pos_enc_perturbed.pth')
+        model.pos_enc_ = pos_enc_
+
+    feats_ = torch.cat((test_data.x, feats_delta), dim=0)
+    row_indices, col_indices = adj_delta.nonzero()
+    edges_delta = torch.tensor([row_indices, col_indices])
+    z, _, new_att = model.encode(feats_, edges_delta)
+    print(len(new_att))
+    print(len(orig_att))
+    new_outputs = model.decode(z, test_data.edge_label_index).view(-1).sigmoid()
+    new_outputs, new_att = new_outputs[:orig_outputs.shape[0]], new_att[:orig_att.shape[0]]
+    accuracy = roc_auc_score(test_data.edge_label.detach().cpu().numpy(), new_outputs.detach().cpu().numpy())
+    logging.info(f"Accuracy after Injection Attack: {accuracy:.4f}")
+
+    TVD_score = TVD(orig_outputs, new_outputs) / len(orig_outputs)
+    JSD_score = JSD(orig_att, new_att) / len(orig_att)
+    logging.info(f"JSD: {JSD_score}")
+    logging.info(f"TVD: {TVD_score}")

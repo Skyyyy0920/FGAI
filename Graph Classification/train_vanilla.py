@@ -21,8 +21,8 @@ def get_args():
     parser.add_argument('--dataset', type=str,
                         # default='ogbg-ppa',
                         # default='ogbg-molhiv',
-                        default='MUTAG',
-                        # default='PROTEINS',
+                        # default='MUTAG',
+                        default='PROTEINS',
                         # default='IMDBBINARY',
                         # default='IMDBMULTI',
                         help='Dataset name')
@@ -45,11 +45,15 @@ if __name__ == '__main__':
     args = get_args()
     print(f"Using device: {args.device}")
     print(f"PyTorch Version: {torch.__version__}")
+    current_dir = os.getcwd()
+    print("Current work dir：", current_dir)
+    new_dir = current_dir + "/Node Classification"
+    os.chdir(new_dir)
     print('\n' + '=' * 36 + ' Setup logger ' + '=' * 36)
     for handler in logging.root.handlers[:]:
         logging.root.removeHandler(handler)
-    logging_time = time.strftime('%m-%d_%H-%M', time.localtime())
-    save_dir = os.path.join("standard_model", f"{args.dataset}")
+    logging_time = time.strftime('%H-%M', time.localtime())
+    save_dir = os.path.join("checkpoints", f"{args.base_model}+vanilla", f"{args.dataset}_{logging_time}")
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
     print(f"Saving path: {save_dir}")
@@ -98,7 +102,7 @@ if __name__ == '__main__':
 
     orig_outputs, orig_graph_repr, orig_att = std_trainer.train(train_loader, valid_loader)
 
-    evaluate_graph_level(standard_model, criterion, test_loader, args.device)
+    evaluate_graph_level(standard_model, test_loader, args.device)
 
     torch.save(standard_model.state_dict(), os.path.join(save_dir, 'model_parameters.pth'))
     tensor_dict = {'orig_outputs': orig_outputs, 'orig_graph_repr': orig_graph_repr, 'orig_att': orig_att}
