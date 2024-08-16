@@ -19,8 +19,8 @@ if __name__ == '__main__':
     # dataset = 'pubmed'
     # dataset = 'citeseer'
 
-    base_model = 'GAT'
-    # base_model = 'GATv2'
+    # base_model = 'GAT'
+    base_model = 'GATv2'
     # base_model = 'GT'
 
     # ==================================================================================================
@@ -150,7 +150,7 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 5. Load pre-trained vanilla model
     # ==================================================================================================
-    tim = '22-53'
+    tim = '12-44'
     model.load_state_dict(torch.load(f"./checkpoints/{base_model}+vanilla/{dataset}_{tim}/model_parameters.pth"))
     model.eval()
     with torch.no_grad():

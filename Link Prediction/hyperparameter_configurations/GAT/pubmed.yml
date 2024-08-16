@@ -1,7 +1,7 @@
 dataset: pubmed
-num_epochs: 200
-n_inject_max: 10
-n_edge_max: 20
+num_epochs: 100
+n_inject_max: 15
+n_edge_max: 30
 epsilon: 0.1
 n_epoch_attack: 10
 hid_dim: 256

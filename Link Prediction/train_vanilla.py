@@ -18,8 +18,8 @@ if __name__ == '__main__':
     # ==================================================================================================
     # 1. Choose the dataset, base model
     # ==================================================================================================
-    dataset = 'cora'
-    # dataset = 'pubmed'
+    # dataset = 'cora'
+    dataset = 'pubmed'
     # dataset = 'citeseer'
 
     base_model = 'GAT'
@@ -53,8 +53,8 @@ if __name__ == '__main__':
         T.RandomLinkSplit(num_val=0.05, num_test=0.1, is_undirected=True,
                           add_negative_train_samples=False),
     ])
-    dataset = Planetoid('./dataset', name='Cora', transform=transform)
-    train_data, val_data, test_data = dataset[0]
+    data = Planetoid('./dataset', name=dataset, transform=transform)
+    train_data, val_data, test_data = data[0]
     pos_enc_size = 8
     out_size = 64
 
@@ -63,7 +63,7 @@ if __name__ == '__main__':
     # ==================================================================================================
     if base_model == 'GAT':
         model = GATLinkPredictor(
-            feats_size=dataset.num_features,
+            feats_size=data.num_features,
             hidden_size=args.hid_dim,
             out_size=out_size,
             n_layers=args.n_layers,
@@ -75,7 +75,7 @@ if __name__ == '__main__':
 
     elif base_model == 'GATv2':
         model = GATLinkPredictor(
-            feats_size=dataset.num_features,
+            feats_size=data.num_features,
             hidden_size=args.hid_dim,
             out_size=out_size,
             n_layers=args.n_layers,
@@ -88,7 +88,7 @@ if __name__ == '__main__':
 
     elif base_model == 'GT':
         model = GTNodeClassifier(
-            feats_size=dataset.num_features,
+            feats_size=data.num_features,
             hidden_size=args.hid_dim,
             out_size=out_size,
             pos_enc_size=pos_enc_size,
