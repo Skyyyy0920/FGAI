@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from copy import deepcopy
 import dgl.function as fn
-from dgl.nn import GATv2Conv
+from dgl.nn import GATv2Conv, AvgPooling, MaxPooling, GlobalAttentionPooling
 from dgl.base import DGLError
 from dgl.ops import edge_softmax
 from dgl.utils import expand_as_pair
@@ -361,47 +361,87 @@ class GATLinkPredictor(nn.Module):
 
 
 class GATGraphClassifier(nn.Module):
-    def __init__(self, feats_size, hidden_size, n_classes, n_layers, n_heads, feat_drop, attn_drop, readout_type=''):
-        super(GATGraphClassifier, self).__init__()
-        self.readout_type = readout_type
+    def __init__(self,
+                 feat_size,
+                 hidden_size=256,
+                 n_classes=2,
+                 n_layers=3,
+                 n_heads=[4, 4, 4],
+                 feat_drop=0.3,
+                 attn_drop=0.3,
+                 residual=True,
+                 readout='attention',
+                 version='v1'):
+        super().__init__()
+
+        self.num_layers = n_layers
+        self.residual = residual
+        self.readout = readout
         self.layers = nn.ModuleList()
+        self.norms = nn.ModuleList()
+        self.GAT_layer = GATConv if version == 'v1' else GATv2Conv
+
         self.layers.append(
-            GATConv(feats_size, hidden_size, n_heads[0], feat_drop, attn_drop, activation=F.elu)
+            self.GAT_layer(feat_size, hidden_size, n_heads[0],
+                           feat_drop=feat_drop, attn_drop=attn_drop, activation=F.elu, residual=residual)
         )
-        for i in range(0, n_layers - 1):
-            in_hid_dim = hidden_size * n_heads[i]
+        self.norms.append(nn.BatchNorm1d(hidden_size * n_heads[0]))
+
+        for i in range(1, n_layers - 1):
             self.layers.append(
-                GATConv(in_hid_dim, hidden_size, n_heads[i + 1], feat_drop, attn_drop, activation=F.elu)
+                self.GAT_layer(hidden_size * n_heads[i - 1], hidden_size, n_heads[i],
+                               feat_drop=feat_drop, attn_drop=attn_drop, activation=F.elu, residual=residual)
             )
-        self.out_layer = nn.Linear(hidden_size * n_heads[-1], n_classes)
+            self.norms.append(nn.BatchNorm1d(hidden_size * n_heads[i]))
 
-    def forward(self, x, g):
-        for layer in self.layers:
-            x, att = layer(g, x, get_attention=True)
-            x = x.flatten(1)  # use concat to handle multi-head. for mean method, use h = h.mean(1)
-        attention = att
-        x = self.out_layer(x)
-        g.ndata['h'] = x
+        self.layers.append(
+            self.GAT_layer(hidden_size * n_heads[-2], hidden_size, n_heads[-1],
+                           feat_drop=feat_drop, attn_drop=attn_drop,
+                           activation=None, residual=residual, allow_zero_in_degree=True)
+        )
 
-        if self.readout_type == 'K-shell':
-            src, dst = g.edges()
-            num_nodes = g.number_of_nodes()
-            adj = sp.csr_matrix((np.ones(len(src)), (src.cpu().numpy(), dst.cpu().numpy())),
-                                shape=(num_nodes, num_nodes))
-            k_values = torch.tensor(k_shell_algorithm(adj), dtype=torch.float32).to(x.device)
-            k_values /= k_values.sum()
-            g.ndata['w'] = k_values.view(-1, 1).repeat(1, x.shape[1])
-            graph_representation = dgl.readout_nodes(g, 'h', weight='w')
-        elif self.readout_type == 'mean':
-            graph_representation = dgl.readout_nodes(g, 'h', op='mean')
-        elif self.readout_type == 'max':
-            graph_representation = dgl.readout_nodes(g, 'h', op='max')
-        elif self.readout_type == 'min':
-            graph_representation = dgl.readout_nodes(g, 'h', op='min')
+        if readout == 'attention':
+            self.pool = GlobalAttentionPooling(nn.Linear(hidden_size, 1))
+        elif readout == 'mean':
+            self.pool = AvgPooling()
+        elif readout == 'max':
+            self.pool = MaxPooling()
+        elif readout == 'jk':  # Jumping Knowledge
+            self.jk_proj = nn.Linear(hidden_size * n_layers, hidden_size)
+
+        self.classifier = nn.Sequential(
+            nn.Linear(hidden_size, hidden_size // 2),
+            nn.ELU(),
+            nn.Dropout(0.5),
+            nn.Linear(hidden_size // 2, n_classes)
+        )
+
+    def forward(self, feat, g):
+        h = feat
+        h_list = []  # 用于JK连接
+
+        for i in range(self.num_layers):
+            h, attn = self.layers[i](g, h, get_attention=True)
+
+            if i < self.num_layers - 1:
+                h = h.flatten(1)  # 拼接多头
+                h = self.norms[i](h)
+                h = F.elu(h)
+                h = F.dropout(h, p=0.3, training=self.training)
+                h_list.append(h)
+            else:
+                h = h.mean(1)  # 最后一层多头取平均
+
+        # Readout
+        if self.readout == 'jk':
+            h = torch.cat([h.mean(0).unsqueeze(0) for h in h_list], dim=1)
+            h = self.jk_proj(h)
         else:
-            raise ValueError(f"Unknown readout type: {self.readout_type}")
+            g.ndata['h'] = h
+            h = self.pool(g, g.ndata['h'])
 
-        return graph_representation, graph_representation, attention
+        logits = self.classifier(h)
+        return logits, attn
 
 
 class ProGNN:

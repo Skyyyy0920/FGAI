@@ -1,7 +1,7 @@
 from utils import *
 
 
-class StandardTrainer:
+class VanillaTrainer:
     def __init__(self, standard_model, criterion, optimizer, args):
         self.model = standard_model
         self.criterion = criterion
@@ -15,12 +15,12 @@ class StandardTrainer:
             self.model.train()
             loss_list = []
             for batched_graph, labels in train_loader:
-                labels = labels.to(self.device)
-                feats = batched_graph.ndata['attr'].to(self.device)
+                labels = labels.squeeze().to(self.device)
+                # feats = batched_graph.ndata['attr'].to(self.device)
+                feats = batched_graph.ndata['feat'].float().to(self.device)
 
-                # TODO: 这里还没改好
-                original_outputs, original_graph_repr, original_att = self.model(feats, batched_graph.to(self.device))
-                loss = self.criterion(original_outputs, labels)
+                original_outputs, original_att = self.model(feats.to(self.device), batched_graph.to(self.device))
+                loss = self.criterion(original_outputs, labels.long())
                 loss_list.append(loss.item())
 
                 self.optimizer.zero_grad()
@@ -34,11 +34,13 @@ class StandardTrainer:
                 loss_list = []
                 pred_list, label_list = [], []
                 for batched_graph, labels in valid_loader:
-                    labels = labels.to(self.device)
-                    feats = batched_graph.ndata['attr'].to(self.device)
+                    labels = labels.view(-1).to(self.device)
+                    # feats = batched_graph.ndata['attr'].to(self.device)
+                    feats = batched_graph.ndata['feat'].float().to(self.device)
 
-                    logits, _, _ = self.model(feats, batched_graph.to(self.device))
-                    loss = self.criterion(logits, labels)
+                    logits, _ = self.model(feats, batched_graph.to(self.device))
+
+                    loss = self.criterion(logits, labels.long())
                     loss_list.append(loss.item())
 
                     predicted = logits.argmax(dim=1)
@@ -46,12 +48,13 @@ class StandardTrainer:
                     label_list = label_list + labels.tolist()
 
                 accuracy = accuracy_score(label_list, pred_list)
-                precision = precision_score(label_list, pred_list)
-                recall = recall_score(label_list, pred_list)
-                f1 = f1_score(label_list, pred_list)
-
-            logging.info(f'Val Loss: {np.mean(loss_list):.4f} | Accuracy: {accuracy:.4f} | Precision: {precision:.4f}'
-                         f' | Recall: {recall:.4f} | F1: {f1:.4f}')
+            #     precision = precision_score(label_list, pred_list)
+            #     recall = recall_score(label_list, pred_list)
+            #     f1 = f1_score(label_list, pred_list)
+            #
+            # logging.info(f'Val Loss: {np.mean(loss_list):.4f} | Accuracy: {accuracy:.4f} | Precision: {precision:.4f}'
+            #              f' | Recall: {recall:.4f} | F1: {f1:.4f}')
+            logging.info(f'Val Loss: {np.mean(loss_list):.4f} | Accuracy: {accuracy:.4f}')
 
         return original_outputs, original_graph_repr, original_att
 

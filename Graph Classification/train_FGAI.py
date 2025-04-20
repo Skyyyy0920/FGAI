@@ -30,11 +30,12 @@ def get_args():
     parser.add_argument('--task', type=str, default='node-level', help='task')  # default='graph-level'
     parser.add_argument('--dataset',
                         type=str,
-                        default='ogbn-arxiv',
+                        default='ogbg-molhiv',
                         help='Dataset name')
 
     # Experimental Setup
     parser.add_argument('--num_epochs', type=int, default=300, help='Training epoch')
+    parser.add_argument('--batch_size', type=int, default=32)
 
     parser.add_argument('--n_inject_max', type=int, default=50)
     parser.add_argument('--n_edge_max', type=int, default=50)
@@ -46,6 +47,8 @@ def get_args():
     parser.add_argument('--lambda_3', type=float, default=1e-2)
     parser.add_argument('--K', type=int, default=500000)
 
+    parser.add_argument('--readout_type', type=str, default='mean')
+
     parser.add_argument('--save_path', type=str, default='./checkpoints/', help='Checkpoints saving path')
 
     args = parser.parse_args()
@@ -53,18 +56,23 @@ def get_args():
 
 
 if __name__ == '__main__':
+    # ==================================================================================================
+    # 1. Get experiment args and seed
+    # ==================================================================================================
+    print('\n' + '=' * 36 + ' Get experiment args ' + '=' * 36)
     args = get_args()
     print(f"Using device: {args.device}")
     print(f"PyTorch Version: {torch.__version__}")
-    current_dir = os.getcwd()
-    print("Current work dir：", current_dir)
-    new_dir = current_dir + "/Node Classification"
-    os.chdir(new_dir)
+    # setup_seed(args.seed)  # make the experiment repeatable
+
+    # ==================================================================================================
+    # 2. Setup logger
+    # ==================================================================================================
     print('\n' + '=' * 36 + ' Setup logger ' + '=' * 36)
     for handler in logging.root.handlers[:]:
         logging.root.removeHandler(handler)
-    logging_time = time.strftime('%H-%M', time.localtime())
-    save_dir = os.path.join("checkpoints", f"{args.base_model}+vanilla", f"{args.dataset}_{logging_time}")
+    logging_time = time.strftime('%m-%d_%H-%M', time.localtime())
+    save_dir = os.path.join(args.save_path, f"{args.dataset}_{logging_time}")
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
     print(f"Saving path: {save_dir}")
