@@ -7,8 +7,6 @@ from dgl import backend as F
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 from scipy.sparse import csr_matrix
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-
 
 def zipdir(path, zipf, include_format):
     for root, dirs, files in os.walk(path):

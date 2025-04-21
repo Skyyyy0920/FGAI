@@ -11,7 +11,6 @@ from trainer import FGAIGraphTrainer
 from attackers import GraphPGDAttacker, GraphRandomAttacker
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-# device = 'cpu'
 
 if __name__ == '__main__':
     # dataset = 'ogbg-molhiv'
@@ -128,7 +127,6 @@ if __name__ == '__main__':
     all_orig_att, all_new_att = [], []
     for batched_graph, labels in tqdm(test_loader):
         labels = labels.to(device)
-        # feats = batched_graph.ndata['attr'].to(device)
         feats = batched_graph.ndata['feat'].to(device)
         adv_graphs, adv_feats, node_mask, edge_mask = attacker.perturb_batch(batched_graph, feats)
 
