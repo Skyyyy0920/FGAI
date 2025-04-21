@@ -16,7 +16,7 @@ import dgl.sparse as dglsp
 from utils import k_shell_algorithm, feature_normalize
 import torch.optim as optim
 from deeprobust.graph.utils import accuracy
-from deeprobust.graph.defense.pgd import PGD, prox_operators
+# from deeprobust.graph.defense.pgd import PGD, prox_operators
 from scipy.sparse import csr_matrix
 
 
@@ -383,14 +383,16 @@ class GATGraphClassifier(nn.Module):
 
         self.layers.append(
             self.GAT_layer(feat_size, hidden_size, n_heads[0],
-                           feat_drop=feat_drop, attn_drop=attn_drop, activation=F.elu, residual=residual)
+                           feat_drop=feat_drop, attn_drop=attn_drop, activation=F.elu, residual=residual,
+                           allow_zero_in_degree=True)
         )
         self.norms.append(nn.BatchNorm1d(hidden_size * n_heads[0]))
 
         for i in range(1, n_layers - 1):
             self.layers.append(
                 self.GAT_layer(hidden_size * n_heads[i - 1], hidden_size, n_heads[i],
-                               feat_drop=feat_drop, attn_drop=attn_drop, activation=F.elu, residual=residual)
+                               feat_drop=feat_drop, attn_drop=attn_drop, activation=F.elu, residual=residual,
+                               allow_zero_in_degree=True)
             )
             self.norms.append(nn.BatchNorm1d(hidden_size * n_heads[i]))
 
@@ -424,13 +426,13 @@ class GATGraphClassifier(nn.Module):
             h, attn = self.layers[i](g, h, get_attention=True)
 
             if i < self.num_layers - 1:
-                h = h.flatten(1)  # 拼接多头
+                h = h.flatten(1)
                 h = self.norms[i](h)
                 h = F.elu(h)
                 h = F.dropout(h, p=0.3, training=self.training)
                 h_list.append(h)
             else:
-                h = h.mean(1)  # 最后一层多头取平均
+                h = h.mean(1)
 
         # Readout
         if self.readout == 'jk':

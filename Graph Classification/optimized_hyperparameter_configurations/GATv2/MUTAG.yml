@@ -1,10 +1,6 @@
 dataset: MUTAG
 num_epochs: 100
 batch_size: 32
-n_inject_max: 20
-n_edge_max: 40
-epsilon: 0.1
-n_epoch_attack: 10
 hid_dim: 256
 n_heads:
 - 8

@@ -13,15 +13,12 @@ from attackers import GraphPGDAttacker, GraphRandomAttacker
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 if __name__ == '__main__':
-    # dataset = 'ogbg-molhiv'
     # dataset = 'DD'
-    dataset = 'MUTAG'
-    # dataset = 'COLLAB'
-    # dataset = 'ENZYMES'
-    # dataset = 'ogbg-ppa'
+    # dataset = 'MUTAG'
+    dataset = 'fakenews'
 
-    base_model = 'GAT'
-    # base_model = 'GATv2'
+    # base_model = 'GAT'
+    base_model = 'GATv2'
     # base_model = 'GT'
 
     with open(f"./optimized_hyperparameter_configurations/{base_model}/{dataset}.yml", 'r') as file:
@@ -107,7 +104,7 @@ if __name__ == '__main__':
     # attacker = GraphPGDAttacker(epsilon=0.1, device='cuda')
     attacker = GraphRandomAttacker(attack_mode='feat')
     trainer = FGAIGraphTrainer(model, optimizer, attacker, args)
-    for epoch in range(args.num_epochs-80):
+    for epoch in range(args.num_epochs):
         train_loss = trainer.train_epoch(train_loader)
         val_metrics = trainer.evaluate(test_loader)
 

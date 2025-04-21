@@ -1,5 +1,5 @@
-dataset: MUTAG
-num_epochs: 100
+dataset: fakenews
+num_epochs: 50
 batch_size: 32
 hid_dim: 256
 n_heads:

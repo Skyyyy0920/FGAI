@@ -18,7 +18,7 @@ class VanillaTrainer:
             loss_list = []
             for batched_graph, labels in train_loader:
                 labels = labels.squeeze().to(self.device)
-                feats = batched_graph.ndata['attr'].to(self.device)
+                feats = batched_graph.ndata['feat'].to(self.device)
 
                 original_outputs, original_att = self.model(feats.to(self.device), batched_graph.to(self.device))
                 loss = self.criterion(original_outputs, labels.long())
@@ -36,7 +36,6 @@ class VanillaTrainer:
                 pred_list, label_list = [], []
                 for batched_graph, labels in valid_loader:
                     labels = labels.view(-1).to(self.device)
-                    # feats = batched_graph.ndata['attr'].to(self.device)
                     feats = batched_graph.ndata['feat'].float().to(self.device)
 
                     logits, _ = self.model(feats, batched_graph.to(self.device))
@@ -117,7 +116,6 @@ class FGAIGraphTrainer:
                 feats = batched_graph.ndata['feat'].to(self.args.device)
                 orig_logits, orig_att = self.model(feats, batched_graph.to(self.args.device))
 
-                # adv_graphs, adv_feats,_,_ = self.attacker.perturb_batch(self.model, batched_graph, feats)
                 adv_graphs, adv_feats, _, _ = self.attacker.perturb_batch(batched_graph, feats)
                 adv_logits, adv_att = self.model(adv_feats, adv_graphs.to(self.args.device))
 

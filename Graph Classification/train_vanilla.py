@@ -13,15 +13,12 @@ from attackers import GraphRandomAttacker
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 if __name__ == '__main__':
-    # dataset = 'ogbg-molhiv'
     dataset = 'DD'
-    # dataset = 'COLLAB'
-    # dataset = 'ENZYMES'
     # dataset = 'MUTAG'
-    # dataset = 'ogbg-ppa'
+    # dataset = 'fakenews'
 
-    # base_model = 'GAT'
-    base_model = 'GATv2'
+    base_model = 'GAT'
+    # base_model = 'GATv2'
     # base_model = 'GT'
 
     with open(f"./optimized_hyperparameter_configurations/{base_model}/{dataset}.yml", 'r') as file:
@@ -119,6 +116,8 @@ if __name__ == '__main__':
     all_orig_att, all_new_att = [], []
     for batched_graph, labels in tqdm(test_loader):
         labels = labels.to(device)
+        if labels.dim() > 1:
+            labels = torch.argmax(labels, dim=1)
         feats = batched_graph.ndata['feat'].to(device)
         adv_graphs, adv_feats, node_mask, edge_mask = attacker.perturb_batch(batched_graph, feats)
 
