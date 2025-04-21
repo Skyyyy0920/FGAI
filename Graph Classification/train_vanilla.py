@@ -18,10 +18,11 @@ if __name__ == '__main__':
     dataset = 'DD'
     # dataset = 'COLLAB'
     # dataset = 'ENZYMES'
+    # dataset = 'MUTAG'
     # dataset = 'ogbg-ppa'
 
-    base_model = 'GAT'
-    # base_model = 'GATv2'
+    # base_model = 'GAT'
+    base_model = 'GATv2'
     # base_model = 'GT'
 
     with open(f"./optimized_hyperparameter_configurations/{base_model}/{dataset}.yml", 'r') as file:
@@ -119,6 +120,7 @@ if __name__ == '__main__':
     all_orig_att, all_new_att = [], []
     for batched_graph, labels in tqdm(test_loader):
         labels = labels.to(device)
+        # feats = batched_graph.ndata['attr'].to(device)
         feats = batched_graph.ndata['feat'].to(device)
         # adv_graphs, adv_feats = attacker.perturb_batch(batched_graph, feats)
         # adv_graphs, adv_feats, node_mask = attacker.perturb_batch(batched_graph, feats)

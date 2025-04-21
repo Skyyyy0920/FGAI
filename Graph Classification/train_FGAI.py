@@ -1,189 +1,161 @@
-import yaml
 import time
-import torch.nn as nn
-import zipfile
+import yaml
 import argparse
-from pathlib import Path
-
-from models import GATGraphClassifier
-from utils import *
-from trainer import FGAITrainer
-from load_dataset import load_dataset
-from attackers import PGD
+import torch.nn as nn
 import torch.optim as optim
-from grb.attack.fgsm import FGSM
-from grb.attack.tdgia import TDGIA
-from grb.attack.rnd import RND
-from grb.attack.speit import SPEIT
+from tqdm import tqdm
+from utils import *
+from models import GATGraphClassifier
+from load_dataset import load_dataset
+from trainer import FGAIGraphTrainer
+from attackers import GraphPGDAttacker, GraphRandomAttacker
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-
-def get_args():
-    parser = argparse.ArgumentParser(description="MTNet's args")
-
-    # Operation environment
-    parser.add_argument('--seed', type=int, default=20010920, help='Random seed')
-    parser.add_argument('--device', type=str, default=device, help='Running on which device')
-
-    # Data
-    parser.add_argument('--task', type=str, default='node-level', help='task')  # default='graph-level'
-    parser.add_argument('--dataset',
-                        type=str,
-                        default='ogbg-molhiv',
-                        help='Dataset name')
-
-    # Experimental Setup
-    parser.add_argument('--num_epochs', type=int, default=300, help='Training epoch')
-    parser.add_argument('--batch_size', type=int, default=32)
-
-    parser.add_argument('--n_inject_max', type=int, default=50)
-    parser.add_argument('--n_edge_max', type=int, default=50)
-    parser.add_argument('--epsilon', type=float, default=0.01)
-    parser.add_argument('--n_epoch_attack', type=int, default=10)
-
-    parser.add_argument('--lambda_1', type=float, default=1e-2)
-    parser.add_argument('--lambda_2', type=float, default=1e-2)
-    parser.add_argument('--lambda_3', type=float, default=1e-2)
-    parser.add_argument('--K', type=int, default=500000)
-
-    parser.add_argument('--readout_type', type=str, default='mean')
-
-    parser.add_argument('--save_path', type=str, default='./checkpoints/', help='Checkpoints saving path')
-
-    args = parser.parse_args()
-    return args
-
+# device = 'cpu'
 
 if __name__ == '__main__':
-    # ==================================================================================================
-    # 1. Get experiment args and seed
-    # ==================================================================================================
-    print('\n' + '=' * 36 + ' Get experiment args ' + '=' * 36)
-    args = get_args()
-    print(f"Using device: {args.device}")
-    print(f"PyTorch Version: {torch.__version__}")
-    # setup_seed(args.seed)  # make the experiment repeatable
+    # dataset = 'ogbg-molhiv'
+    # dataset = 'DD'
+    dataset = 'MUTAG'
+    # dataset = 'COLLAB'
+    # dataset = 'ENZYMES'
+    # dataset = 'ogbg-ppa'
 
-    # ==================================================================================================
-    # 2. Setup logger
-    # ==================================================================================================
-    print('\n' + '=' * 36 + ' Setup logger ' + '=' * 36)
-    for handler in logging.root.handlers[:]:
-        logging.root.removeHandler(handler)
-    logging_time = time.strftime('%m-%d_%H-%M', time.localtime())
-    save_dir = os.path.join(args.save_path, f"{args.dataset}_{logging_time}")
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
-    print(f"Saving path: {save_dir}")
-    logging.basicConfig(level=logging.INFO,
-                        format='[%(asctime)s %(levelname)s]%(message)s',
-                        datefmt='%Y-%m-%d %H:%M:%S',
-                        filename=os.path.join(save_dir, f'{args.dataset}.log'))
-    console = logging.StreamHandler()  # Simultaneously output to console
-    console.setLevel(logging.INFO)
-    console.setFormatter(logging.Formatter(fmt='[%(asctime)s %(levelname)s]%(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
-    logging.getLogger('').addHandler(console)
-    logging.getLogger('matplotlib.font_manager').disabled = True
+    base_model = 'GAT'
+    # base_model = 'GATv2'
+    # base_model = 'GT'
 
-    # ==================================================================================================
-    # 3. Save codes and settings
-    # ==================================================================================================
-    print('\n' + '=' * 36 + ' Save codes and settings ' + '=' * 36)
-    zipf = zipfile.ZipFile(file=os.path.join(save_dir, 'codes.zip'), mode='a', compression=zipfile.ZIP_DEFLATED)
-    zipdir(Path().absolute(), zipf, include_format=['.py'])
-    zipf.close()
-    with open(os.path.join(save_dir, 'args.yml'), 'a') as f:
-        yaml.dump(vars(args), f, sort_keys=False)
+    with open(f"./optimized_hyperparameter_configurations/{base_model}/{dataset}.yml", 'r') as file:
+        args = yaml.full_load(file)
+    args = argparse.Namespace(**args)
+    args.device = device
+    logging_time = time.strftime('%H-%M', time.localtime())
+    save_dir = os.path.join("checkpoints", f"{base_model}+vanilla", f"{dataset}_{logging_time}")
+    logging_config(save_dir)
+    logging.info(f"args: {args}")
+    logging.info(f"Saving path: {save_dir}")
+    logging.info(f"base model: {base_model}")
 
-    # ==================================================================================================
-    # 4. Prepare data
-    # ==================================================================================================
     train_loader, valid_loader, test_loader, in_feats, num_classes = load_dataset(args)
 
-    # ==================================================================================================
-    # 5. Build models, define overall loss and optimizer
-    # ==================================================================================================
-    if args.dataset == 'ogbg-ppa':
-        standard_model = GATGraphClassifier(feats_size=in_feats,
-                                            hidden_size=128,
-                                            n_classes=num_classes,
-                                            n_layers=3,
-                                            n_heads=[4, 2, 1],
-                                            feat_drop=0.2,
-                                            attn_drop=0.05,
-                                            readout_type=args.readout_type).to(args.device)
-        FGAI = GATGraphClassifier(feats_size=in_feats,
-                                  hidden_size=128,
-                                  n_classes=num_classes,
-                                  n_layers=3,
-                                  n_heads=[4, 2, 1],
-                                  feat_drop=0.2,
-                                  attn_drop=0.05,
-                                  readout_type=args.readout_type).to(args.device)
-        optimizer_FGAI = optim.Adam(FGAI.parameters(),
-                                    lr=1e-2,
-                                    weight_decay=0)
+    if base_model == 'GAT':
+        model = GATGraphClassifier(
+            feat_size=in_feats,
+            hidden_size=args.hid_dim,
+            n_classes=num_classes,
+            n_layers=args.n_layers,
+            n_heads=args.n_heads,
+            feat_drop=args.feat_drop,
+            attn_drop=args.attn_drop,
+            residual=True,
+            readout='attention'
+        ).to(args.device)
+
+    elif base_model == 'GATv2':
+        model = GATGraphClassifier(
+            feat_size=in_feats,
+            hidden_size=args.hid_dim,
+            n_classes=num_classes,
+            n_layers=args.n_layers,
+            n_heads=args.n_heads,
+            feat_drop=args.feat_drop,
+            attn_drop=args.attn_drop,
+            residual=True,
+            readout='attention',
+            version='v2'
+        ).to(args.device)
+
+    elif base_model == 'GT':
+        model = GTGraphClassifier(
+            feats_size=features.shape[1],
+            hidden_size=args.hid_dim,
+            out_size=num_classes,
+            pos_enc_size=pos_enc_size,
+            n_layers=args.n_layers,
+            n_heads=args.n_heads,
+            layer_norm=False
+        ).to(device)
+        pos_enc_path = f"./GT_pos_encoding/{dataset}_pos_enc.pth"
+        if os.path.exists(pos_enc_path):
+            pos_enc = torch.load(pos_enc_path)
+        else:
+            in_degrees = torch.tensor(adj.sum(axis=0)).squeeze()
+            pos_enc = laplacian_pe(adj, in_degrees, k=pos_enc_size, padding=True).to(device)
+            torch.save(pos_enc, pos_enc_path)
+        model.pos_enc = pos_enc
+        pos_enc_per_path = f"./GT_pos_encoding/{dataset}_pos_enc_perturbed.pth"
+        if os.path.exists(pos_enc_per_path):
+            model.pos_enc_ = torch.load(pos_enc_per_path)
+            need_update = False
+        else:
+            need_update = True
+
     else:
-        standard_model = GATGraphClassifier(feats_size=in_feats,
-                                            hidden_size=128,
-                                            n_classes=num_classes,
-                                            n_layers=3,
-                                            n_heads=[4, 2, 1],
-                                            feat_drop=0.2,
-                                            attn_drop=0.05,
-                                            readout_type=args.readout_type).to(args.device)
-        FGAI = GATGraphClassifier(feats_size=in_feats,
-                                  hidden_size=128,
-                                  n_classes=num_classes,
-                                  n_layers=3,
-                                  n_heads=[4, 2, 1],
-                                  feat_drop=0.2,
-                                  attn_drop=0.05,
-                                  readout_type=args.readout_type).to(args.device)
-        optimizer_FGAI = optim.Adam(FGAI.parameters(),
-                                    lr=1e-2,
-                                    weight_decay=5e-4)
-    attacker_delta = PGD(epsilon=args.epsilon,
-                         n_epoch=args.n_epoch_attack,
-                         n_inject_max=args.n_inject_max,
-                         n_edge_max=args.n_edge_max,
-                         feat_lim_min=-1,
-                         feat_lim_max=1,
-                         # loss=TVD,
-                         device=args.device)
-    attacker_rho = PGD(epsilon=args.epsilon,
-                       n_epoch=args.n_epoch_attack,
-                       n_inject_max=args.n_inject_max,
-                       n_edge_max=args.n_edge_max,
-                       feat_lim_min=-1,
-                       feat_lim_max=1,
-                       loss=topK_overlap_loss,
-                       device=args.device)
+        raise ValueError(f"Unknown base model name: {base_model}")
+
+    optimizer = optim.Adam(
+        model.parameters(),
+        lr=args.lr,
+        weight_decay=args.weight_decay
+    )
     criterion = nn.CrossEntropyLoss()
 
-    FGAI_trainer = FGAITrainer(FGAI, optimizer_FGAI, attacker_delta, attacker_rho, args)
+    total_params = sum(p.numel() for p in model.parameters())
+    logging.info(f"Total parameters: {total_params}")
+    logging.info(f"Model: {model}")
+    logging.info(f"Optimizer: {optimizer}")
 
-    # ==================================================================================================
-    # 6. Load pre-trained standard model
-    # ==================================================================================================
-    standard_model.load_state_dict(torch.load(f'./standard_model/{args.dataset}/model_parameters.pth'))
-    standard_model.eval()
+    # attacker = GraphPGDAttacker(epsilon=0.1, device='cuda')
+    attacker = GraphRandomAttacker(attack_mode='feat')
+    trainer = FGAIGraphTrainer(model, optimizer, attacker, args)
+    for epoch in range(args.num_epochs-80):
+        train_loss = trainer.train_epoch(train_loader)
+        val_metrics = trainer.evaluate(test_loader)
 
-    tensor_dict = torch.load(f'./standard_model/{args.dataset}/tensors.pth')
-    orig_outputs = tensor_dict['orig_outputs'].to(device=args.device)
-    orig_graph_repr = tensor_dict['orig_graph_repr'].to(device=args.device)
-    orig_att = tensor_dict['orig_att'].to(device=args.device)
+        print(f"Epoch {epoch + 1} | Loss: {train_loss:.4f} | "
+              f"Val Acc: {val_metrics['accuracy']:.4f} | "
+              f"TVD: {val_metrics['tvd']:.4f}")
 
-    evaluate_graph_level(standard_model, criterion, test_loader, args.device)
+    torch.save(model.state_dict(), os.path.join(save_dir, 'model_parameters.pth'))
 
-    # ==================================================================================================
-    # 7. Train our FGAI
-    # ==================================================================================================
-    FGAI_trainer.train(train_loader, valid_loader, orig_outputs, orig_graph_repr, orig_att)
-    evaluate_graph_level(FGAI, criterion, test_loader, args.device)
+    attacker = GraphRandomAttacker(
+        edge_add_ratio=0.2,
+        inject_node_max=2,
+        attack_mode='mixed'
+    )
+    pred_list, label_list = [], []
+    all_orig_outputs, all_new_outputs = [], []
+    all_orig_att, all_new_att = [], []
+    for batched_graph, labels in tqdm(test_loader):
+        labels = labels.to(device)
+        # feats = batched_graph.ndata['attr'].to(device)
+        feats = batched_graph.ndata['feat'].to(device)
+        adv_graphs, adv_feats, node_mask, edge_mask = attacker.perturb_batch(batched_graph, feats)
 
-    # ==================================================================================================
-    # 7. Save FGAI
-    # ==================================================================================================
-    torch.save(FGAI.state_dict(), 'FGAI_parameters.pth')
+        with torch.no_grad():
+            orig_logits, orig_att = model(feats, batched_graph.to(device))
+            adv_feats = adv_feats[:adv_graphs.num_nodes()]
+            logits, att = model(adv_feats, adv_graphs.to(device))
+
+        predicted = logits.argmax(dim=1)
+        pred_list = pred_list + predicted.tolist()
+        label_list = label_list + labels.tolist()
+
+        all_orig_outputs.append(orig_logits)
+        all_new_outputs.append(logits)
+        orig_att = orig_att.mean(dim=1, keepdim=True)
+        new_att = att.mean(dim=1, keepdim=True)
+        all_orig_att.append(orig_att)
+        all_new_att.append(new_att[edge_mask])
+
+    accuracy = accuracy_score(label_list, pred_list)
+    logging.info(f'Test Accuracy after perturbed: {accuracy:.4f}')
+
+    orig_outputs = torch.cat(all_orig_outputs)
+    new_outputs = torch.cat(all_new_outputs)
+    orig_att = torch.cat(all_orig_att)  # [total_nodes,1,1]
+    new_att = torch.cat(all_new_att)[:orig_att.shape[0]]
+    TVD_score = TVD(orig_outputs, new_outputs) / len(orig_outputs)
+    JSD_score = JSD(orig_att, new_att) / len(orig_att)
+    logging.info(f"JSD: {JSD_score}")
+    logging.info(f"TVD: {TVD_score}")
